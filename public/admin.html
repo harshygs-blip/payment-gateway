@@ -182,10 +182,28 @@
               Simulate an incoming UPI/FamPay payment to test the Time-Window Matching Engine without sending real money!
             </p>
 
+            <!-- Quick 1-Click Test & Auto-Match -->
+            <div style="margin-bottom: 16px; padding: 12px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(56, 189, 248, 0.1) 100%); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm);">
+              <div style="font-size: 12px; font-weight: 600; color: #34d399; margin-bottom: 4px;">⚡ 1-Click Instant End-to-End Test</div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+                Creates an order and immediately sends a matching simulated payment to see the real-time match in action!
+              </div>
+              <button type="button" class="btn btn-primary" id="btnQuickSimulate" onclick="quickCreateAndSimulate()" style="width: 100%; justify-content: center; font-size: 13px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                ⚡ 1-Click: Create Order & Auto-Match ₹100
+              </button>
+            </div>
+
+            <!-- Manual Custom Simulator Form -->
             <form id="simulatorForm">
               <div class="form-group">
-                <label class="form-label">Amount (₹)</label>
-                <input type="number" id="simAmount" class="form-control" placeholder="e.g. 250" step="0.01" required>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label class="form-label" style="margin-bottom: 0;">Amount (₹)</label>
+                  <span style="font-size: 11px; color: var(--text-dim);" id="simActiveOrdersHint">Active Pending Orders:</span>
+                </div>
+                <div id="simPendingChips" style="display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0;">
+                  <span style="font-size: 11px; color: var(--text-dim);">Checking pending orders...</span>
+                </div>
+                <input type="number" id="simAmount" class="form-control" placeholder="e.g. 100" step="0.01" required>
               </div>
 
               <div class="form-group">
@@ -203,7 +221,7 @@
               </button>
             </form>
 
-            <div id="simResult" style="margin-top: 12px; font-size: 12px; display: none;"></div>
+            <div id="simResult" style="margin-top: 12px; font-size: 12.5px; display: none; padding: 12px; border-radius: var(--radius-sm); line-height: 1.5;"></div>
           </div>
 
           <!-- Live Payment Feed -->

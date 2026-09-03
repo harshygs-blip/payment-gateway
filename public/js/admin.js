@@ -312,6 +312,21 @@ async function loadOrders(filter = 'ALL') {
 }
 
 function renderOrders(orders) {
+  // Update Simulator Quick Chips with Active Pending Orders
+  const pendingOrders = (orders || []).filter(o => o.status === 'PENDING');
+  const simChips = document.getElementById('simPendingChips');
+  if (simChips) {
+    if (pendingOrders.length === 0) {
+      simChips.innerHTML = `<span style="font-size: 11px; color: var(--accent-amber);">⚠️ No pending orders open. Click 1-Click test below!</span>`;
+    } else {
+      simChips.innerHTML = pendingOrders.slice(0, 4).map(o => `
+        <button type="button" onclick="selectPendingOrderForSim('${o.order_code}', ${o.amount})" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; border-color: rgba(56, 189, 248, 0.4); color: var(--primary); cursor: pointer;" title="Fill ₹${o.amount} into simulator">
+          👉 ${o.order_code}: ₹${Number(o.amount).toFixed(2)}
+        </button>
+      `).join('');
+    }
+  }
+
   if (!orders || orders.length === 0) {
     ordersTableBody.innerHTML = `
       <tr>
@@ -460,7 +475,103 @@ createOrderForm.addEventListener('submit', async (e) => {
   }
 });
 
-// 5. Simulator Handler
+// 5. Simulator Helpers & Handler
+function selectPendingOrderForSim(code, amount) {
+  simAmount.value = amount;
+  simUtr.value = `SIM-UTR-${Date.now().toString().slice(-6)}`;
+  simResult.style.display = 'block';
+  simResult.style.background = 'rgba(56, 189, 248, 0.1)';
+  simResult.style.border = '1px solid rgba(56, 189, 248, 0.3)';
+  simResult.style.color = '#38bdf8';
+  simResult.innerHTML = `Selected Order <b>${code}</b> for ₹${amount}. Now click "🚀 Simulate Incoming Payment"!`;
+}
+window.selectPendingOrderForSim = selectPendingOrderForSim;
+
+async function quickCreateAndSimulate(amount = 100) {
+  const btn = document.getElementById('btnQuickSimulate');
+  const originalText = btn ? btn.innerText : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⏳ Creating & Matching...';
+  }
+  simResult.style.display = 'block';
+  simResult.style.background = 'rgba(56, 189, 248, 0.1)';
+  simResult.style.border = '1px solid rgba(56, 189, 248, 0.3)';
+  simResult.style.color = '#38bdf8';
+  simResult.innerHTML = `⏳ <b>Step 1/2:</b> Creating test order for ₹${amount}...`;
+
+  try {
+    // 1. Create order
+    const orderRes = await fetch('/api/orders/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(currentApiKey ? { 'x-api-key': currentApiKey } : {})
+      },
+      body: JSON.stringify({
+        amount: amount,
+        customerName: 'Quick Simulation Buyer',
+        customerPhone: '9876543210'
+      })
+    });
+    const orderData = await orderRes.json();
+    if (!orderData.success) {
+      simResult.style.background = 'rgba(239, 68, 68, 0.15)';
+      simResult.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      simResult.style.color = '#f87171';
+      simResult.innerHTML = `❌ Failed to create test order: ${orderData.error}`;
+      return;
+    }
+
+    const orderCode = orderData.order.orderCode;
+    simResult.innerHTML = `⏳ <b>Step 2/2:</b> Order <b>${orderCode}</b> created! Simulating incoming UPI payment...`;
+
+    // 2. Simulate payment for that exact amount
+    const simRes = await fetch('/api/admin/simulate-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: amount,
+        sender: 'Test Buyer (Auto)',
+        utr: `SIM-${Date.now().toString().slice(-8)}`
+      })
+    });
+    const simData = await simRes.json();
+
+    if (simData.success && simData.result && simData.result.matched) {
+      simResult.style.background = 'rgba(16, 185, 129, 0.15)';
+      simResult.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      simResult.style.color = '#34d399';
+      simResult.innerHTML = `
+        🎉 <b>100% SUCCESS MATCH!</b><br>
+        Order <b>${orderCode}</b> (₹${amount}) matched with simulated payment!<br>
+        Status: <span class="badge PAID">PAID</span><br>
+        UTR: <code>${simData.result.order.utr}</code>
+      `;
+    } else {
+      simResult.style.background = 'rgba(245, 158, 11, 0.15)';
+      simResult.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+      simResult.style.color = '#fbbf24';
+      simResult.innerHTML = `⚠️ Order created (${orderCode}), but matching pending: ${simData.result?.reason || ''}`;
+    }
+
+    loadStats();
+    loadOrders(currentFilter);
+    loadPayments();
+  } catch (err) {
+    simResult.style.background = 'rgba(239, 68, 68, 0.15)';
+    simResult.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+    simResult.style.color = '#f87171';
+    simResult.innerHTML = `❌ Error: ${err.message}`;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = originalText;
+    }
+  }
+}
+window.quickCreateAndSimulate = quickCreateAndSimulate;
+
 simulatorForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   btnSimulate.disabled = true;
@@ -484,14 +595,26 @@ simulatorForm.addEventListener('submit', async (e) => {
     simResult.style.display = 'block';
 
     if (data.success && data.result.matched) {
-      simResult.style.color = '#10b981';
+      simResult.style.background = 'rgba(16, 185, 129, 0.15)';
+      simResult.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      simResult.style.color = '#34d399';
       simResult.innerHTML = `✅ <b>Success!</b> Matched with Order <b>${data.result.order.order_code}</b> for ₹${data.result.order.amount}!`;
     } else if (data.success && !data.result.matched) {
-      simResult.style.color = '#f59e0b';
-      simResult.innerHTML = `⚠️ Payment recorded, but <b>no active pending order</b> for ₹${simAmount.value} was open.`;
+      simResult.style.background = 'rgba(245, 158, 11, 0.12)';
+      simResult.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+      simResult.style.color = '#fbbf24';
+      simResult.innerHTML = `
+        ⚠️ <b>Payment Recorded, But No Pending Order Matched!</b><br>
+        ₹${simAmount.value} database me save ho gaya, lekin matching ke liye is exact amount ka active <b>PENDING</b> order hona chahiye.<br>
+        <button type="button" class="btn btn-primary" onclick="quickCreateAndSimulate(${simAmount.value})" style="margin-top: 8px; font-size: 11.5px; padding: 4px 10px;">
+          ⚡ Click Here: Create ₹${simAmount.value} Order & Match Instantly
+        </button>
+      `;
     } else {
-      simResult.style.color = '#ef4444';
-      simResult.innerHTML = `❌ ${data.result?.reason || 'Simulation failed'}`;
+      simResult.style.background = 'rgba(239, 68, 68, 0.15)';
+      simResult.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      simResult.style.color = '#f87171';
+      simResult.innerHTML = `❌ ${data.result?.reason || data.error || 'Simulation failed'}`;
     }
 
     loadStats();
@@ -500,7 +623,9 @@ simulatorForm.addEventListener('submit', async (e) => {
 
   } catch (err) {
     simResult.style.display = 'block';
-    simResult.style.color = '#ef4444';
+    simResult.style.background = 'rgba(239, 68, 68, 0.15)';
+    simResult.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+    simResult.style.color = '#f87171';
     simResult.innerText = 'Error simulating: ' + err.message;
   } finally {
     btnSimulate.disabled = false;
