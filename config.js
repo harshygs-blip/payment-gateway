@@ -23,7 +23,7 @@ export const config = {
     senderFilter: (process.env.IMAP_SENDER_FILTER || 'fampay').split(',').map(s => s.trim().toLowerCase())
   },
   
-  adminSecret: process.env.ADMIN_SECRET_KEY || 'admin123',
+  adminSecret: process.env.ADMIN_SECRET_KEY || 'shivambhatt@admin',
   
   auth: {
     apiKey: process.env.API_KEY || '',

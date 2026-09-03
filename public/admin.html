@@ -9,6 +9,44 @@
 </head>
 <body>
 
+  <!-- Master Key Lock Screen Overlay -->
+  <div id="masterKeyLockScreen" style="display: none; position: fixed; inset: 0; background: rgba(11, 15, 25, 0.97); backdrop-filter: blur(25px); z-index: 99999; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background: rgba(18, 24, 39, 0.95); border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(56, 189, 248, 0.15); border-radius: 20px; max-width: 420px; width: 100%; padding: 36px 28px; text-align: center;">
+      
+      <!-- Glowing Lock Icon -->
+      <div style="width: 64px; height: 64px; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(129, 140, 248, 0.2) 100%); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 28px; box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">
+        🔐
+      </div>
+
+      <h2 style="font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px;">Admin Master Key</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 24px; line-height: 1.5;">
+        Admin dashboard me ghusne ke liye Master Key enter karein.
+      </p>
+
+      <form id="masterKeyForm" onsubmit="submitMasterKey(event)">
+        <div class="form-group" style="margin-bottom: 16px;">
+          <div style="position: relative;">
+            <input type="password" id="inputMasterKey" class="form-control" placeholder="Enter Master Key" style="font-size: 14px; padding-right: 44px; text-align: center; letter-spacing: 0.5px;" required autofocus>
+            <button type="button" onclick="toggleMasterKeyInputVisibility()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px;">
+              👁️
+            </button>
+          </div>
+          <div id="masterKeyError" style="display: none; font-size: 12px; color: var(--accent-red); margin-top: 8px; font-weight: 500;">
+            ❌ Invalid Master Key. Access Denied.
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="btnUnlockDashboard" style="width: 100%; justify-content: center; padding: 12px; font-size: 14px;">
+          🔓 Unlock Dashboard
+        </button>
+      </form>
+
+      <div style="margin-top: 20px; font-size: 11px; color: var(--text-dim);">
+        Protected by Personal UPI Gateway Security
+      </div>
+    </div>
+  </div>
+
   <!-- Top Navbar -->
   <nav class="navbar">
     <div class="brand-box">
@@ -29,6 +67,7 @@
       </div>
 
       <button class="btn btn-primary" id="btnOpenCreateOrder">+ Create Order</button>
+      <button class="btn btn-secondary" id="btnAdminLock" onclick="lockAdminDashboard()" title="Lock Dashboard & Logout" style="padding: 6px 12px; font-size: 12px;">🔒 Lock</button>
     </div>
   </nav>
 

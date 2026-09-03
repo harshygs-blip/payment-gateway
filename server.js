@@ -58,6 +58,7 @@ async function bootstrap() {
     logger.info(`🩺 Health Check:                http://localhost:${config.port}/health`);
     logger.info(`💳 Configured UPI VPA:          ${config.merchant.upiVpa} (${config.merchant.name})`);
     logger.info(`📧 IMAP Realtime Alert Engine:  ${config.imap.enabled ? 'ACTIVE' : 'STANDBY'}`);
+    logger.info(`🔐 Admin Master Key:            ${config.adminSecret}`);
     logger.info('======================================================');
 
     // 8. Launch real-time IMAP email listener if configured

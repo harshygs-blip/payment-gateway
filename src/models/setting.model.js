@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getSetting, setSetting, getAllSettings } from '../../db/database.js';
+import { config } from '../../config.js';
 
 export const SettingModel = {
   get: getSetting,
@@ -37,6 +38,21 @@ export const SettingModel = {
     await setSetting('require_api_key', required ? 'true' : 'false');
   },
 
+  async getMasterKey() {
+    let key = await getSetting('admin_master_key');
+    if (!key) {
+      key = config.adminSecret || 'shivambhatt@admin';
+      await setSetting('admin_master_key', key);
+    }
+    return key;
+  },
+
+  async setMasterKey(newKey) {
+    await setSetting('admin_master_key', newKey);
+    config.adminSecret = newKey;
+    return newKey;
+  },
+
   async hydrateConfig(config) {
     const vpa = await getSetting('merchant_upi_vpa');
     if (vpa) config.merchant.upiVpa = vpa;
@@ -63,6 +79,9 @@ export const SettingModel = {
     config.auth = config.auth || {};
     config.auth.apiKey = await this.getApiKey();
     config.auth.requireApiKey = await this.isApiKeyRequired();
+
+    // Hydrate Admin Master Key
+    config.adminSecret = await this.getMasterKey();
   }
 };
 

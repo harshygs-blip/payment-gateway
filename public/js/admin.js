@@ -1,5 +1,116 @@
+// ==================== MASTER KEY AUTH & FETCH INTERCEPTOR ==================== //
+function getAdminMasterKey() {
+  return localStorage.getItem('admin_master_key') || '';
+}
+
+const originalFetch = window.fetch;
+window.fetch = async function (url, options = {}) {
+  const urlStr = typeof url === 'string' ? url : (url.url || '');
+  if (urlStr.startsWith('/api/admin') && !urlStr.includes('/auth/verify-master-key')) {
+    const key = getAdminMasterKey();
+    options = options || {};
+    options.headers = options.headers || {};
+
+    if (options.headers instanceof Headers) {
+      if (key && !options.headers.has('x-admin-key')) {
+        options.headers.set('x-admin-key', key);
+      }
+    } else {
+      if (key && !options.headers['x-admin-key']) {
+        options.headers['x-admin-key'] = key;
+      }
+    }
+  }
+
+  const response = await originalFetch.call(this, url, options);
+
+  if (response.status === 401 && urlStr.startsWith('/api/admin') && !urlStr.includes('/auth/verify-master-key')) {
+    showMasterKeyLockScreen();
+  }
+
+  return response;
+};
+
+function showMasterKeyLockScreen() {
+  const overlay = document.getElementById('masterKeyLockScreen');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    const input = document.getElementById('inputMasterKey');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+  }
+}
+window.showMasterKeyLockScreen = showMasterKeyLockScreen;
+
+function hideMasterKeyLockScreen() {
+  const overlay = document.getElementById('masterKeyLockScreen');
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+}
+window.hideMasterKeyLockScreen = hideMasterKeyLockScreen;
+
+function toggleMasterKeyInputVisibility() {
+  const input = document.getElementById('inputMasterKey');
+  if (!input) return;
+  input.type = input.type === 'password' ? 'text' : 'password';
+}
+window.toggleMasterKeyInputVisibility = toggleMasterKeyInputVisibility;
+
+async function submitMasterKey(e) {
+  if (e) e.preventDefault();
+  const input = document.getElementById('inputMasterKey');
+  const errorBox = document.getElementById('masterKeyError');
+  const btn = document.getElementById('btnUnlockDashboard');
+  const key = input ? input.value.trim() : '';
+
+  if (!key) return;
+
+  btn.disabled = true;
+  btn.innerText = 'Verifying...';
+  if (errorBox) errorBox.style.display = 'none';
+
+  try {
+    const res = await originalFetch('/api/admin/auth/verify-master-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ masterKey: key })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      localStorage.setItem('admin_master_key', key);
+      hideMasterKeyLockScreen();
+      initDashboardData();
+    } else {
+      if (errorBox) {
+        errorBox.style.display = 'block';
+        errorBox.innerText = '❌ ' + (data.error || 'Invalid Master Key. Access Denied.');
+      }
+    }
+  } catch (err) {
+    if (errorBox) {
+      errorBox.style.display = 'block';
+      errorBox.innerText = 'Network error: ' + err.message;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerText = '🔓 Unlock Dashboard';
+  }
+}
+window.submitMasterKey = submitMasterKey;
+
+function lockAdminDashboard() {
+  localStorage.removeItem('admin_master_key');
+  showMasterKeyLockScreen();
+}
+window.lockAdminDashboard = lockAdminDashboard;
+
 let socket = null;
 let currentFilter = 'ALL';
+
 
 // Elements - Metrics
 const metricRevenue = document.getElementById('metricRevenue');
@@ -1043,10 +1154,40 @@ async function testApiKeyOrderCreation() {
 }
 window.testApiKeyOrderCreation = testApiKeyOrderCreation;
 
-// Initial Load
-loadStats();
-loadOrders('ALL');
-loadPayments();
-loadLedger();
-loadApiKeyDetails();
-initSocket();
+function initDashboardData() {
+  loadStats();
+  loadOrders('ALL');
+  loadPayments();
+  loadLedger();
+  loadApiKeyDetails();
+  initSocket();
+}
+
+async function checkAdminAuthOnStartup() {
+  const savedKey = getAdminMasterKey();
+  if (!savedKey) {
+    showMasterKeyLockScreen();
+    return;
+  }
+
+  try {
+    const res = await originalFetch('/api/admin/auth/verify-master-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ masterKey: savedKey })
+    });
+    const data = await res.json();
+    if (data.success) {
+      hideMasterKeyLockScreen();
+      initDashboardData();
+    } else {
+      localStorage.removeItem('admin_master_key');
+      showMasterKeyLockScreen();
+    }
+  } catch (_) {
+    showMasterKeyLockScreen();
+  }
+}
+
+// Verify Master Key authentication before loading any data
+checkAdminAuthOnStartup();
