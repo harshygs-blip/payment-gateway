@@ -52,13 +52,33 @@ const uiSettingsFeedback = document.getElementById('uiSettingsFeedback');
 const uiBtnScanInbox = document.getElementById('uiBtnScanInbox');
 const inboxScanResults = document.getElementById('inboxScanResults');
 
+// Ledger DOM Elements
+const btnSyncAllEmails = document.getElementById('btnSyncAllEmails');
+const syncFeedback = document.getElementById('syncFeedback');
+const ledgerTotalMoney = document.getElementById('ledgerTotalMoney');
+const ledgerTotalCount = document.getElementById('ledgerTotalCount');
+const ledgerTopCustomer = document.getElementById('ledgerTopCustomer');
+const ledgerTopCustomerAmount = document.getElementById('ledgerTopCustomerAmount');
+const ledgerTopSendersList = document.getElementById('ledgerTopSendersList');
+const pasteEmailForm = document.getElementById('pasteEmailForm');
+const pasteEmailInput = document.getElementById('pasteEmailInput');
+const btnParsePaste = document.getElementById('btnParsePaste');
+const pasteFeedback = document.getElementById('pasteFeedback');
+const ledgerTableBody = document.getElementById('ledgerTableBody');
+
 // Tab Switching Logic
 function switchTab(tab) {
   document.getElementById('tabBtnDashboard').classList.toggle('active', tab === 'dashboard');
+  document.getElementById('tabBtnLedger').classList.toggle('active', tab === 'ledger');
   document.getElementById('tabBtnConfig').classList.toggle('active', tab === 'config');
 
   document.getElementById('tabContentDashboard').classList.toggle('active', tab === 'dashboard');
+  document.getElementById('tabContentLedger').classList.toggle('active', tab === 'ledger');
   document.getElementById('tabContentConfig').classList.toggle('active', tab === 'config');
+
+  if (tab === 'ledger') {
+    loadLedger();
+  }
 }
 window.switchTab = switchTab;
 
@@ -567,6 +587,7 @@ function initSocket() {
     loadStats();
     loadOrders(currentFilter);
     loadPayments();
+    loadLedger();
   });
 
   socket.on('order_expired', () => {
@@ -579,8 +600,179 @@ function initSocket() {
   });
 }
 
+// 11. Load Financial Ledger (Hisab-Kitab)
+async function loadLedger() {
+  try {
+    const res = await fetch('/api/admin/ledger');
+    const data = await res.json();
+    if (!data.success || !data.ledger) return;
+
+    const { totalCollected, totalTransactions, topSenders, payments } = data.ledger;
+
+    // Metrics
+    ledgerTotalMoney.innerText = `₹ ${Number(totalCollected).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+    ledgerTotalCount.innerText = totalTransactions;
+
+    if (topSenders && topSenders.length > 0) {
+      ledgerTopCustomer.innerText = topSenders[0].sender;
+      ledgerTopCustomerAmount.innerText = `₹${Number(topSenders[0].total).toFixed(2)} (${topSenders[0].count} payments)`;
+
+      // Render Top Senders Breakdown
+      ledgerTopSendersList.innerHTML = topSenders.map((s, idx) => {
+        const pct = totalCollected > 0 ? ((s.total / totalCollected) * 100).toFixed(0) : 0;
+        return `
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-card); border-radius: var(--radius-sm); padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-weight: 700; color: #fff; font-size: 13px;">
+                #${idx + 1} ${s.sender}
+              </span>
+              <span style="font-weight: 700; color: var(--accent-green); font-size: 14px;">
+                ₹ ${Number(s.total).toFixed(2)}
+              </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim);">
+              <span>${s.count} transactions</span>
+              <span>${pct}% of total</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      ledgerTopCustomer.innerText = '-';
+      ledgerTopCustomerAmount.innerText = 'No payments recorded yet';
+      ledgerTopSendersList.innerHTML = `
+        <div style="text-align: center; color: var(--text-dim); padding: 20px; font-size: 13px;">
+          No customer history recorded yet. Sync with Gmail or paste an email.
+        </div>
+      `;
+    }
+
+    // Render Full Historical Ledger Table
+    if (payments && payments.length > 0) {
+      ledgerTableBody.innerHTML = payments.map(p => {
+        return `
+          <tr>
+            <td style="font-size: 12px; color: var(--text-muted);">${new Date(p.received_at).toLocaleString()}</td>
+            <td style="font-weight: 700; font-size: 15px; color: var(--accent-green);">₹ ${Number(p.amount).toFixed(2)}</td>
+            <td style="font-weight: 600;">${p.sender || 'Unknown'}</td>
+            <td style="font-family: 'JetBrains Mono'; font-size: 12px; color: #38bdf8;">${p.utr}</td>
+            <td style="font-size: 12px; color: var(--text-dim);">${p.source}</td>
+            <td><span class="badge PAID">VERIFIED IN LEDGER</span></td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      ledgerTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 30px;">
+            No historical payments in ledger. Click "Sync Past Payments from Gmail" above!
+          </td>
+        </tr>
+      `;
+    }
+
+  } catch (err) {
+    console.error('Failed to load ledger:', err);
+  }
+}
+window.loadLedger = loadLedger;
+
+// 12. 1-Click Sync Past Payments from Gmail
+btnSyncAllEmails.addEventListener('click', async () => {
+  btnSyncAllEmails.disabled = true;
+  btnSyncAllEmails.innerText = '⏳ Syncing All Past Emails from Gmail...';
+  syncFeedback.style.display = 'block';
+  syncFeedback.style.background = 'rgba(56, 189, 248, 0.15)';
+  syncFeedback.style.border = '1px solid rgba(56, 189, 248, 0.3)';
+  syncFeedback.style.color = '#38bdf8';
+  syncFeedback.innerHTML = 'Connecting to Gmail inbox and scanning past payment receipts... Please wait 5-10 seconds.';
+
+  try {
+    const res = await fetch('/api/admin/imap/sync-history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maxEmails: 100 })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      syncFeedback.style.background = 'rgba(16, 185, 129, 0.15)';
+      syncFeedback.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      syncFeedback.style.color = '#34d399';
+      syncFeedback.innerHTML = `
+        🎉 <b>Hisab-Kitab Complete!</b><br>
+        Scanned <b>${data.scannedCount}</b> past emails.<br>
+        Found & Imported <b>${data.importedCount}</b> payments totaling <b>₹${data.totalAmount.toFixed(2)}</b>!<br>
+        (${data.duplicateCount} already existed in ledger).
+      `;
+      loadLedger();
+      loadStats();
+      loadPayments();
+    } else {
+      syncFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+      syncFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      syncFeedback.style.color = '#f87171';
+      syncFeedback.innerHTML = `❌ <b>Sync Failed:</b><br>${data.error}`;
+    }
+  } catch (err) {
+    syncFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+    syncFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+    syncFeedback.style.color = '#f87171';
+    syncFeedback.innerText = 'Network error: ' + err.message;
+  } finally {
+    btnSyncAllEmails.disabled = false;
+    btnSyncAllEmails.innerText = '🔄 1-Click Sync Past Payments from Gmail';
+  }
+});
+
+// 13. Quick Paste Email to Parse & Add to Ledger
+pasteEmailForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const rawText = pasteEmailInput.value.trim();
+  if (!rawText) return;
+
+  btnParsePaste.disabled = true;
+  btnParsePaste.innerText = 'Parsing...';
+  pasteFeedback.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/admin/ledger/parse-paste', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: rawText })
+    });
+    const data = await res.json();
+
+    pasteFeedback.style.display = 'block';
+    if (data.success) {
+      pasteFeedback.style.background = 'rgba(16, 185, 129, 0.15)';
+      pasteFeedback.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      pasteFeedback.style.color = '#34d399';
+      pasteFeedback.innerHTML = `✅ <b>${data.message}</b>`;
+      pasteEmailInput.value = '';
+      loadLedger();
+      loadStats();
+      loadPayments();
+    } else {
+      pasteFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+      pasteFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      pasteFeedback.style.color = '#f87171';
+      pasteFeedback.innerHTML = `❌ ${data.error}`;
+    }
+  } catch (err) {
+    pasteFeedback.style.display = 'block';
+    pasteFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+    pasteFeedback.style.color = '#f87171';
+    pasteFeedback.innerText = 'Error parsing: ' + err.message;
+  } finally {
+    btnParsePaste.disabled = false;
+    btnParsePaste.innerText = '⚡ Parse & Add to Ledger';
+  }
+});
+
 // Initial Load
 loadStats();
 loadOrders('ALL');
 loadPayments();
+loadLedger();
 initSocket();

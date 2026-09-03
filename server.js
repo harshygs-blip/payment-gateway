@@ -15,8 +15,10 @@ import {
   restartImapListener, 
   testImapConnection, 
   fetchRecentPaymentEmails, 
+  syncHistoricalPayments, 
   getImapStatus 
 } from './services/imapListener.js';
+import { parsePaymentEmail } from './services/emailParser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -370,6 +372,121 @@ app.get('/api/admin/imap/recent', async (req, res) => {
     return res.json(result);
   } catch (err) {
     console.error('[IMAP Fetch Recent Error]:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 13. Sync All Historical Payments from Gmail
+ */
+app.post('/api/admin/imap/sync-history', async (req, res) => {
+  try {
+    const maxEmails = parseInt(req.body.maxEmails || 100, 10);
+    const result = await syncHistoricalPayments({ maxEmails });
+
+    if (result.success && result.importedCount > 0) {
+      io.to('admin_room').emit('payment_event', { type: 'HISTORICAL_SYNC_COMPLETED', result });
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[IMAP Sync History Error]:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 14. Instant Paste Email Text to Parse & Add to Ledger
+ */
+app.post('/api/admin/ledger/parse-paste', async (req, res) => {
+  try {
+    const { text, subject = 'Pasted Payment Email' } = req.body;
+    if (!text || text.trim().length < 10) {
+      return res.status(400).json({ success: false, error: 'Please paste the email content.' });
+    }
+
+    const payment = parsePaymentEmail(subject, text, new Date());
+    if (!payment.success || !payment.amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Could not find a valid UPI/FamPay payment amount in the pasted text.'
+      });
+    }
+
+    // Check duplicate
+    const existing = await query.get('SELECT id, amount, utr FROM payments WHERE utr = ?', [payment.utr]);
+    if (existing) {
+      return res.json({
+        success: true,
+        isDuplicate: true,
+        message: `Payment already exists in ledger! (UTR: ${payment.utr}, ₹${existing.amount})`,
+        payment: existing
+      });
+    }
+
+    const receivedTimestamp = payment.receivedAt.getTime();
+    const result = await query.run(
+      `INSERT INTO payments (utr, amount, sender, received_at, source, raw_snippet, is_matched)
+       VALUES (?, ?, ?, ?, 'PASTED_EMAIL', ?, 0)`,
+      [payment.utr, payment.amount, payment.sender, receivedTimestamp, payment.rawSnippet]
+    );
+
+    const savedPayment = {
+      id: result.lastID,
+      amount: payment.amount,
+      utr: payment.utr,
+      sender: payment.sender,
+      sourceApp: payment.sourceApp,
+      received_at: receivedTimestamp
+    };
+
+    io.to('admin_room').emit('payment_event', { type: 'PAYMENT_ADDED_TO_LEDGER', payment: savedPayment });
+
+    return res.json({
+      success: true,
+      isDuplicate: false,
+      message: `Parsed & Saved ₹${payment.amount} from ${payment.sender} (UTR: ${payment.utr})`,
+      payment: savedPayment
+    });
+  } catch (err) {
+    console.error('[Ledger Parse Paste Error]:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * 15. Financial Ledger (Hisab-Kitab) Analytics Summary
+ */
+app.get('/api/admin/ledger', async (req, res) => {
+  try {
+    const totalRow = await query.get('SELECT COUNT(*) as count, SUM(amount) as total FROM payments');
+    const topSenders = await query.all(
+      `SELECT sender, COUNT(*) as count, SUM(amount) as total 
+       FROM payments 
+       WHERE sender IS NOT NULL AND sender != 'Unknown' AND sender != ''
+       GROUP BY sender 
+       ORDER BY total DESC 
+       LIMIT 8`
+    );
+
+    const recentPayments = await query.all(
+      `SELECT p.*, o.order_code as matched_order_code 
+       FROM payments p
+       LEFT JOIN orders o ON p.matched_order_id = o.id
+       ORDER BY p.received_at DESC LIMIT 100`
+    );
+
+    return res.json({
+      success: true,
+      ledger: {
+        totalCollected: totalRow?.total || 0,
+        totalTransactions: totalRow?.count || 0,
+        topSenders: topSenders || [],
+        payments: recentPayments || []
+      }
+    });
+  } catch (err) {
+    console.error('[Ledger Summary Error]:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

@@ -24,11 +24,14 @@ export function parsePaymentEmail(subject = '', body = '', date = new Date()) {
   // 2. Amount Extraction
   // Priority 1: Explicitly match the received/credited amount (avoids matching "Updated Balance: ₹500.36")
   let amount = null;
-  const receivedAmountMatch = text.match(/(?:successfully\s+)?received\s*(?:₹|Rs\.?|INR)?\s*([\d,]+\.?\d*)/i) ||
-                              text.match(/(?:credited\s+(?:by|with)?|payment\s+of)\s*(?:₹|Rs\.?|INR)?\s*([\d,]+\.?\d*)/i);
+  const receivedAmountMatch = text.match(/(?:successfully\s+)?received\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*([\d,]+\.?\d*)/i) ||
+                              text.match(/(?:credited\s+(?:by|with)?|payment\s+of)\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*([\d,]+\.?\d*)/i);
 
   if (receivedAmountMatch && receivedAmountMatch[1]) {
-    amount = parseFloat(receivedAmountMatch[1].replace(/,/g, ''));
+    const parsed = parseFloat(receivedAmountMatch[1].replace(/,/g, ''));
+    if (!isNaN(parsed) && parsed > 0) {
+      amount = parsed;
+    }
   }
 
   // Priority 2: Fallback to general currency symbol

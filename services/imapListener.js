@@ -1,6 +1,7 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { config } from '../config.js';
+import { query } from '../db/database.js';
 import { parsePaymentEmail } from './emailParser.js';
 import { processIncomingPayment } from './matchingEngine.js';
 
@@ -146,6 +147,118 @@ export async function fetchRecentPaymentEmails(limit = 5) {
     return { success: true, emails };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Scan past emails from mailbox, extract payments, and build historical financial ledger
+ */
+export async function syncHistoricalPayments({ maxEmails = 100 } = {}) {
+  const user = (config.imap.user || '').trim();
+  const pass = (config.imap.pass || '').trim().replace(/\s+/g, '');
+
+  if (!user || !pass) {
+    return {
+      success: false,
+      error: 'Gmail credentials not configured in settings yet. Please add your email and 16-character Google App Password first.'
+    };
+  }
+
+  const client = new ImapFlow({
+    host: config.imap.host,
+    port: config.imap.port,
+    secure: config.imap.secure,
+    auth: { user, pass },
+    logger: false
+  });
+
+  let connectionError = null;
+  client.on('error', (err) => {
+    connectionError = err;
+    console.error('[Historical Sync Client Error]:', err.message);
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(config.imap.mailbox);
+
+    let scannedCount = 0;
+    let importedCount = 0;
+    let totalImportedAmount = 0;
+    let duplicateCount = 0;
+    const importedList = [];
+
+    try {
+      const status = await client.status(config.imap.mailbox, { messages: true });
+      const totalMessages = status.messages || 0;
+
+      if (totalMessages === 0) {
+        return {
+          success: true,
+          scannedCount: 0,
+          importedCount: 0,
+          duplicateCount: 0,
+          totalAmount: 0,
+          payments: []
+        };
+      }
+
+      // Fetch the latest `maxEmails` messages (from end of mailbox)
+      const startSeq = Math.max(1, totalMessages - maxEmails + 1);
+
+      for await (const message of client.fetch(`${startSeq}:${totalMessages}`, { source: true, envelope: true })) {
+        scannedCount++;
+        const parsed = await simpleParser(message.source);
+        const subject = parsed.subject || '';
+        const fromAddress = parsed.from?.text || '';
+        const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g, ' ') : '');
+        const emailDate = parsed.date || new Date();
+
+        // Run parser
+        const payment = parsePaymentEmail(subject, bodyText, emailDate);
+
+        if (payment.success && payment.amount) {
+          // Check if UTR already exists in DB
+          const existing = await query.get('SELECT id FROM payments WHERE utr = ?', [payment.utr]);
+          if (existing) {
+            duplicateCount++;
+          } else {
+            const receivedTimestamp = payment.receivedAt.getTime();
+            const insertRes = await query.run(
+              `INSERT INTO payments (utr, amount, sender, received_at, source, raw_snippet, is_matched)
+               VALUES (?, ?, ?, ?, 'IMAP_HISTORICAL', ?, 0)`,
+              [payment.utr, payment.amount, payment.sender || fromAddress, receivedTimestamp, payment.rawSnippet]
+            );
+
+            importedCount++;
+            totalImportedAmount += payment.amount;
+            importedList.push({
+              id: insertRes.lastID,
+              amount: payment.amount,
+              utr: payment.utr,
+              sender: payment.sender,
+              sourceApp: payment.sourceApp,
+              date: payment.receivedAt
+            });
+          }
+        }
+      }
+    } finally {
+      lock.release();
+      await client.logout();
+    }
+
+    return {
+      success: true,
+      scannedCount,
+      importedCount,
+      duplicateCount,
+      totalAmount: totalImportedAmount,
+      payments: importedList
+    };
+  } catch (err) {
+    const errorToReport = connectionError || err;
+    return { success: false, error: errorToReport.message || 'Failed to sync historical emails' };
   }
 }
 
@@ -331,5 +444,6 @@ export default {
   restartImapListener,
   testImapConnection,
   fetchRecentPaymentEmails,
+  syncHistoricalPayments,
   getImapStatus
 };

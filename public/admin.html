@@ -40,8 +40,11 @@
       <button class="tab-btn active" id="tabBtnDashboard" onclick="switchTab('dashboard')">
         📊 Live Dashboard & Orders
       </button>
+      <button class="tab-btn" id="tabBtnLedger" onclick="switchTab('ledger')">
+        💰 Email Payments Ledger (पुराना हिसाब-किताब)
+      </button>
       <button class="tab-btn" id="tabBtnConfig" onclick="switchTab('config')">
-        ⚡ Gateway Controls & Auto-Detector (Zero .env)
+        ⚡ Gateway Controls (Zero .env)
       </button>
     </div>
 
@@ -181,7 +184,132 @@
 
     </div>
 
-    <!-- ==================== TAB 2: FULL FRONTEND CONFIGURATOR ==================== -->
+    <!-- ==================== TAB 2: EMAIL PAYMENTS LEDGER & HISAB ==================== -->
+    <div class="tab-content" id="tabContentLedger">
+      
+      <!-- Top Actions Bar -->
+      <div class="panel-card" style="border-top: 3px solid #10b981; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <div style="font-size: 17px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <span>💰 Email Payments Ledger & Hisab (पुराना खाता)</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+              Automatically reads all past FamPay / UPI payment emails from your Gmail inbox and builds an accurate financial ledger!
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-primary" id="btnSyncAllEmails" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+              🔄 1-Click Sync Past Payments from Gmail
+            </button>
+          </div>
+        </div>
+
+        <div id="syncFeedback" style="display: none; margin-top: 14px; padding: 12px; border-radius: 8px; font-size: 13px;"></div>
+      </div>
+
+      <!-- Financial Summary Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card" style="border-left: 3px solid #10b981;">
+          <div class="metric-header">
+            <span>Total Money in Ledger</span>
+            <span>💵</span>
+          </div>
+          <div class="metric-val" id="ledgerTotalMoney" style="color: #34d399;">₹ 0.00</div>
+          <div class="metric-sub">Sum of all parsed email payments</div>
+        </div>
+
+        <div class="metric-card" style="border-left: 3px solid #38bdf8;">
+          <div class="metric-header">
+            <span>Total Transactions Recorded</span>
+            <span>📑</span>
+          </div>
+          <div class="metric-val" id="ledgerTotalCount">0</div>
+          <div class="metric-sub">Verified payments in ledger</div>
+        </div>
+
+        <div class="metric-card" style="border-left: 3px solid #a855f7;">
+          <div class="metric-header">
+            <span>Top Paying Customer</span>
+            <span>👑</span>
+          </div>
+          <div class="metric-val" id="ledgerTopCustomer" style="font-size: 22px; margin-top: 6px;">-</div>
+          <div class="metric-sub" id="ledgerTopCustomerAmount">No data yet</div>
+        </div>
+      </div>
+
+      <!-- Split: Top Senders Breakdown + Quick Paste Tool -->
+      <div class="dashboard-split" style="margin-bottom: 24px;">
+        
+        <!-- Top Senders Breakdown -->
+        <div class="panel-card">
+          <div class="panel-title">
+            <span>👥 Customer / Sender Breakdown (किसने कितना दिया)</span>
+          </div>
+          <div id="ledgerTopSendersList" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="text-align: center; color: var(--text-dim); padding: 20px; font-size: 13px;">
+              No payment history loaded yet. Sync with Gmail or paste an email below.
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Paste Email Box -->
+        <div class="panel-card" style="border-left: 3px solid #f59e0b;">
+          <div class="panel-title">
+            <span>📋 Paste Any Past Email (तुरंत हिसाब जोड़ें)</span>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+            You can paste any FamPay receipt text directly here, and the engine will immediately parse the Amount, UTR, and Sender into the ledger!
+          </p>
+
+          <form id="pasteEmailForm">
+            <textarea id="pasteEmailInput" class="form-control" rows="4" placeholder="Paste FamPay / Bank alert email text here... e.g. You have successfully received ₹500.0 from MEENA KUMARI..." style="font-family: inherit; font-size: 12px; margin-bottom: 10px;" required></textarea>
+            <button type="submit" class="btn btn-secondary" style="width: 100%; justify-content: center;" id="btnParsePaste">
+              ⚡ Parse & Add to Ledger
+            </button>
+          </form>
+
+          <div id="pasteFeedback" style="display: none; margin-top: 10px; padding: 10px; border-radius: 8px; font-size: 12px;"></div>
+        </div>
+
+      </div>
+
+      <!-- Full Historical Payments Ledger Table -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>📑 Full Historical Payments Ledger</span>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadLedger()">
+            Refresh Ledger
+          </button>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Amount (₹)</th>
+                <th>Sender / Customer</th>
+                <th>12-Digit Banking UTR</th>
+                <th>Source / App</th>
+                <th>Ledger Status</th>
+              </tr>
+            </thead>
+            <tbody id="ledgerTableBody">
+              <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 30px;">
+                  Loading ledger...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================== TAB 3: FULL FRONTEND CONFIGURATOR ==================== -->
     <div class="tab-content" id="tabContentConfig">
       
       <div class="dashboard-split">
