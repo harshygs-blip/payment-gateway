@@ -21,6 +21,14 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Global safety net for unhandled network/socket errors
+process.on('uncaughtException', (err) => {
+  console.error('[Process Uncaught Exception]:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process Unhandled Rejection]:', reason);
+});
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {

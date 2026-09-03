@@ -52,6 +52,12 @@ export async function testImapConnection(creds = {}) {
     logger: false
   });
 
+  // Prevent unhandled error event crash on socket timeout or auth failure
+  let connectionError = null;
+  testClient.on('error', (err) => {
+    connectionError = err;
+  });
+
   try {
     await testClient.connect();
     const mailbox = await testClient.status(creds.mailbox || config.imap.mailbox || 'INBOX', { messages: true, unseen: true });
@@ -65,10 +71,11 @@ export async function testImapConnection(creds = {}) {
       unseenMessages: mailbox.unseen || 0
     };
   } catch (err) {
-    let friendlyError = err.message;
-    const msg = (err.message || '').toLowerCase();
-    if (msg.includes('invalid credentials') || msg.includes('authenticationfailed') || msg.includes('command failed') || msg.includes('auth')) {
-      friendlyError = 'Invalid Gmail credentials or login rejected. Make sure 2-Step Verification is ON in your Google Account and you are using a 16-character Google App Password (without spaces).';
+    const errorToReport = connectionError || err;
+    let friendlyError = errorToReport.message || 'Connection failed';
+    const msg = friendlyError.toLowerCase();
+    if (msg.includes('invalid credentials') || msg.includes('authenticationfailed') || msg.includes('command failed') || msg.includes('auth') || msg.includes('timeout')) {
+      friendlyError = 'Invalid Gmail credentials or connection timeout. Make sure 2-Step Verification is ON in your Google Account and you are using a 16-character Google App Password (without spaces).';
     }
     return {
       success: false,
@@ -94,6 +101,10 @@ export async function fetchRecentPaymentEmails(limit = 5) {
       pass: config.imap.pass.replace(/\s+/g, '')
     },
     logger: false
+  });
+
+  client.on('error', (err) => {
+    console.error('[IMAP Diagnostic Client Error]:', err.message);
   });
 
   try {
