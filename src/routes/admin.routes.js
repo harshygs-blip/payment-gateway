@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AdminController } from '../controllers/admin.controller.js';
 import { ImapController } from '../controllers/imap.controller.js';
 import { LedgerController } from '../controllers/ledger.controller.js';
+import { ApiKeyController } from '../controllers/apiKey.controller.js';
 
 const router = Router();
 
@@ -11,6 +12,11 @@ router.get('/orders', AdminController.getOrders);
 router.get('/payments', AdminController.getPayments);
 router.post('/simulate-payment', AdminController.simulatePayment);
 router.post('/settings', AdminController.updateSettings);
+
+// API Key Management endpoints
+router.get('/api-key', ApiKeyController.getApiKey);
+router.post('/api-key/regenerate', ApiKeyController.regenerateApiKey);
+router.post('/api-key/toggle', ApiKeyController.toggleRequireApiKey);
 
 // IMAP Controller endpoints
 router.post('/imap/test', ImapController.testConnection);

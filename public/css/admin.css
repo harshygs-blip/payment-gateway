@@ -461,3 +461,72 @@ tr:hover td {
   transform: translateX(18px);
 }
 
+/* Code Snippets & Developer Docs Styles */
+.code-box {
+  background: #060911;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  position: relative;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  color: #38bdf8;
+  overflow-x: auto;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.code-subnav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-card);
+  padding-bottom: 8px;
+}
+
+.code-subtab {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.code-subtab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.code-subtab.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #fff;
+}
+
+.copy-snippet-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: var(--text-main);
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  z-index: 5;
+}
+
+.copy-snippet-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+

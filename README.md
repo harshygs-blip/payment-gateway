@@ -192,10 +192,11 @@ GET /health
 }
 ```
 
-### 2. Create Checkout Session
+### 2. Create Checkout Session (Protected by API Key)
 ```http
 POST /api/orders/create
 Content-Type: application/json
+x-api-key: pg_live_your_api_key_here
 
 {
   "amount": 500.00,

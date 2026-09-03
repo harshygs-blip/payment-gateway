@@ -71,13 +71,17 @@ function switchTab(tab) {
   document.getElementById('tabBtnDashboard').classList.toggle('active', tab === 'dashboard');
   document.getElementById('tabBtnLedger').classList.toggle('active', tab === 'ledger');
   document.getElementById('tabBtnConfig').classList.toggle('active', tab === 'config');
+  document.getElementById('tabBtnApiKey').classList.toggle('active', tab === 'apiKey');
 
   document.getElementById('tabContentDashboard').classList.toggle('active', tab === 'dashboard');
   document.getElementById('tabContentLedger').classList.toggle('active', tab === 'ledger');
   document.getElementById('tabContentConfig').classList.toggle('active', tab === 'config');
+  document.getElementById('tabContentApiKey').classList.toggle('active', tab === 'apiKey');
 
   if (tab === 'ledger') {
     loadLedger();
+  } else if (tab === 'apiKey') {
+    loadApiKeyDetails();
   }
 }
 window.switchTab = switchTab;
@@ -313,9 +317,14 @@ createOrderForm.addEventListener('submit', async (e) => {
       webhookUrl: orderWebhook.value || ''
     };
 
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentApiKey) {
+      headers['x-api-key'] = currentApiKey;
+    }
+
     const res = await fetch('/api/orders/create', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload)
     });
 
@@ -770,9 +779,274 @@ pasteEmailForm.addEventListener('submit', async (e) => {
   }
 });
 
+// ==================== 14. API KEY MANAGEMENT & INTEGRATION ==================== //
+let currentApiKey = '';
+let currentKeyCreated = null;
+let currentRequireApiKey = true;
+let isKeyVisible = false;
+let activeSnippetLang = 'curl';
+
+async function loadApiKeyDetails() {
+  try {
+    const res = await fetch('/api/admin/api-key');
+    const data = await res.json();
+    if (!data.success) return;
+
+    currentApiKey = data.apiKey;
+    currentRequireApiKey = data.requireApiKey;
+    currentKeyCreated = data.createdAt;
+
+    const input = document.getElementById('uiApiKeyInput');
+    if (input) {
+      input.value = currentApiKey;
+      input.type = isKeyVisible ? 'text' : 'password';
+    }
+
+    const createdLabel = document.getElementById('apiKeyCreatedAt');
+    if (createdLabel && data.createdAt) {
+      createdLabel.innerText = `Created: ${new Date(data.createdAt).toLocaleDateString()} ${new Date(data.createdAt).toLocaleTimeString()}`;
+    }
+
+    const toggle = document.getElementById('uiToggleRequireApiKey');
+    if (toggle) {
+      toggle.checked = currentRequireApiKey;
+    }
+
+    const badge = document.getElementById('apiKeyStatusBadge');
+    if (badge) {
+      badge.className = currentRequireApiKey ? 'badge badge-success' : 'badge badge-pending';
+      badge.innerText = currentRequireApiKey ? '🟢 Strictly Enforced' : '🔓 Open Testing';
+    }
+
+    renderCurrentSnippet();
+  } catch (err) {
+    console.error('Failed to load API key details:', err);
+  }
+}
+window.loadApiKeyDetails = loadApiKeyDetails;
+
+function toggleApiKeyVisibility() {
+  const input = document.getElementById('uiApiKeyInput');
+  const btn = document.getElementById('btnToggleApiKeyVisibility');
+  if (!input) return;
+
+  isKeyVisible = !isKeyVisible;
+  input.type = isKeyVisible ? 'text' : 'password';
+  btn.innerText = isKeyVisible ? '🙈' : '👁️';
+}
+window.toggleApiKeyVisibility = toggleApiKeyVisibility;
+
+function copyApiKeyToClipboard() {
+  if (!currentApiKey) return;
+  navigator.clipboard.writeText(currentApiKey).then(() => {
+    const feedback = document.getElementById('apiKeyCopyFeedback');
+    if (feedback) {
+      feedback.style.display = 'block';
+      setTimeout(() => {
+        feedback.style.display = 'none';
+      }, 2500);
+    }
+  }).catch(err => {
+    console.error('Clipboard copy error:', err);
+  });
+}
+window.copyApiKeyToClipboard = copyApiKeyToClipboard;
+
+async function confirmRegenerateApiKey() {
+  const confirmed = confirm("⚠️ ARE YOU SURE?\\n\\nRegenerating this API Key will immediately invalidate the current key. Any external apps or websites using the old key will fail until updated.");
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch('/api/admin/api-key/regenerate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert(`🎉 New API Key Generated!\\n\\nKey: ${data.apiKey}\\n\\nPlease copy and update your applications.`);
+      loadApiKeyDetails();
+    } else {
+      alert(`❌ Error: ${data.error}`);
+    }
+  } catch (err) {
+    alert('Failed to regenerate API Key: ' + err.message);
+  }
+}
+window.confirmRegenerateApiKey = confirmRegenerateApiKey;
+
+async function toggleRequireApiKey(isRequired) {
+  try {
+    const res = await fetch('/api/admin/api-key/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ required: isRequired })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const badge = document.getElementById('apiKeyStatusBadge');
+      if (badge) {
+        badge.className = data.requireApiKey ? 'badge badge-success' : 'badge badge-pending';
+        badge.innerText = data.requireApiKey ? '🟢 Strictly Enforced' : '🔓 Open Testing';
+      }
+    }
+  } catch (err) {
+    console.error('Failed to toggle require API key:', err);
+  }
+}
+window.toggleRequireApiKey = toggleRequireApiKey;
+
+function switchCodeSnippet(lang) {
+  activeSnippetLang = lang;
+  document.getElementById('codeTabCurl')?.classList.toggle('active', lang === 'curl');
+  document.getElementById('codeTabNodejs')?.classList.toggle('active', lang === 'nodejs');
+  document.getElementById('codeTabPython')?.classList.toggle('active', lang === 'python');
+  document.getElementById('codeTabPhp')?.classList.toggle('active', lang === 'php');
+  renderCurrentSnippet();
+}
+window.switchCodeSnippet = switchCodeSnippet;
+
+function renderCurrentSnippet() {
+  const box = document.getElementById('codeSnippetBox');
+  if (!box) return;
+
+  const origin = window.location.origin;
+  const key = currentApiKey || 'pg_live_YOUR_API_KEY_HERE';
+
+  if (activeSnippetLang === 'curl') {
+    box.innerText = `curl -X POST "${origin}/api/orders/create" \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: ${key}" \\
+  -d '{
+    "amount": 500.00,
+    "customerName": "Rahul Sharma",
+    "customerPhone": "9876543210",
+    "webhookUrl": "https://your-domain.com/webhook"
+  }'`;
+  } else if (activeSnippetLang === 'nodejs') {
+    box.innerText = `// Node.js (v18+ with native fetch)
+const response = await fetch('${origin}/api/orders/create', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': '${key}'
+  },
+  body: JSON.stringify({
+    amount: 500.00,
+    customerName: 'Rahul Sharma',
+    customerPhone: '9876543210',
+    webhookUrl: 'https://your-domain.com/webhook'
+  })
+});
+
+const data = await response.json();
+if (data.success) {
+  console.log('Order Code:', data.order.orderCode);
+  console.log('Redirect User to:', '${origin}' + data.order.checkoutUrl);
+  console.log('UPI Intent URI:', data.order.upiUri);
+}`;
+  } else if (activeSnippetLang === 'python') {
+    box.innerText = `import requests
+
+url = "${origin}/api/orders/create"
+headers = {
+    "Content-Type": "application/json",
+    "x-api-key": "${key}"
+}
+payload = {
+    "amount": 500.00,
+    "customerName": "Rahul Sharma",
+    "customerPhone": "9876543210",
+    "webhookUrl": "https://your-domain.com/webhook"
+}
+
+response = requests.post(url, json=payload, headers=headers)
+data = response.json()
+
+if data.get("success"):
+    print("Order Code:", data["order"]["orderCode"])
+    print("Checkout URL:", "${origin}" + data["order"]["checkoutUrl"])`;
+  } else if (activeSnippetLang === 'php') {
+    box.innerText = `<?php
+$curl = curl_init();
+
+$payload = json_encode([
+    "amount" => 500.00,
+    "customerName" => "Rahul Sharma",
+    "customerPhone" => "9876543210",
+    "webhookUrl" => "https://your-domain.com/webhook"
+]);
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => "${origin}/api/orders/create",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CUSTOMREQUEST => "POST",
+    CURLOPT_POSTFIELDS => $payload,
+    CURLOPT_HTTPHEADER => [
+        "Content-Type: application/json",
+        "x-api-key: ${key}"
+    ],
+]);
+
+$response = curl_exec($curl);
+curl_close($curl);
+
+$data = json_decode($response, true);
+if ($data['success']) {
+    echo "Order Code: " . $data['order']['orderCode'] . "\\n";
+    echo "Checkout URL: ${origin}" . $data['order']['checkoutUrl'] . "\\n";
+}`;
+  }
+}
+
+function copyCurrentSnippet() {
+  const box = document.getElementById('codeSnippetBox');
+  if (!box) return;
+  navigator.clipboard.writeText(box.innerText).then(() => {
+    alert('✅ Code snippet copied to clipboard!');
+  });
+}
+window.copyCurrentSnippet = copyCurrentSnippet;
+
+async function testApiKeyOrderCreation() {
+  const amountInput = document.getElementById('testOrderAmount');
+  const resultBox = document.getElementById('apiTestConsoleResult');
+  const amt = parseFloat(amountInput.value) || 10;
+
+  resultBox.style.display = 'block';
+  resultBox.innerText = 'Sending HTTP POST request with x-api-key...';
+
+  try {
+    const start = Date.now();
+    const res = await fetch('/api/orders/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': currentApiKey
+      },
+      body: JSON.stringify({
+        amount: amt,
+        customerName: 'API Key Test Runner',
+        customerPhone: '9999999999'
+      })
+    });
+    const duration = Date.now() - start;
+    const json = await res.json();
+
+    resultBox.innerText = `HTTP ${res.status} ${res.statusText} (${duration}ms)\\n` + JSON.stringify(json, null, 2);
+    if (json.success) {
+      loadStats();
+      loadOrders(currentFilter);
+    }
+  } catch (err) {
+    resultBox.innerText = 'Network Error: ' + err.message;
+  }
+}
+window.testApiKeyOrderCreation = testApiKeyOrderCreation;
+
 // Initial Load
 loadStats();
 loadOrders('ALL');
 loadPayments();
 loadLedger();
+loadApiKeyDetails();
 initSocket();

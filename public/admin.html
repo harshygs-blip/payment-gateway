@@ -46,6 +46,9 @@
       <button class="tab-btn" id="tabBtnConfig" onclick="switchTab('config')">
         ⚡ Gateway Controls (Zero .env)
       </button>
+      <button class="tab-btn" id="tabBtnApiKey" onclick="switchTab('apiKey')">
+        🔑 API Keys & Integration
+      </button>
     </div>
 
     <!-- ==================== TAB 1: LIVE DASHBOARD ==================== -->
@@ -443,7 +446,147 @@
 
     </div>
 
-  </main>
+    <!-- ==================== TAB 4: API KEYS & INTEGRATION ==================== -->
+    <div class="tab-content" id="tabContentApiKey">
+      
+      <!-- Top Banner -->
+      <div class="panel-card" style="margin-bottom: 24px; background: linear-gradient(135deg, rgba(14, 20, 36, 0.95) 0%, rgba(30, 41, 59, 0.6) 100%); border-left: 4px solid var(--primary);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 6px;">🔑 Developer API Keys & Webhook Integration</h2>
+            <p style="font-size: 13px; color: var(--text-muted); max-width: 780px; line-height: 1.5;">
+              Use your secure Gateway API Key to create checkout sessions, initiate payments, and receive instant callbacks from your website, e-commerce store, Telegram bot, or custom backend.
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" onclick="loadApiKeyDetails()">🔄 Refresh Status</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-grid">
+        
+        <!-- Left Column: API Key Management & Controls -->
+        <div class="panel-card">
+          <div class="panel-title">
+            <span>🛡️ Live Gateway API Key</span>
+            <span class="badge badge-success" id="apiKeyStatusBadge">🟢 Active</span>
+          </div>
+          
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+            Pass this key in HTTP headers as <code style="color: var(--primary); font-family: monospace;">x-api-key: YOUR_KEY</code> or <code style="color: var(--primary); font-family: monospace;">Authorization: Bearer YOUR_KEY</code>.
+          </p>
+
+          <div class="form-group">
+            <label class="form-label" style="display: flex; justify-content: space-between;">
+              <span>API Secret Key</span>
+              <span id="apiKeyCreatedAt" style="color: var(--text-dim); font-size: 11px;">Created: Just now</span>
+            </label>
+            <div style="display: flex; gap: 8px; position: relative;">
+              <input type="password" id="uiApiKeyInput" class="form-control" readonly style="font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 0.5px; color: var(--primary);" value="pg_live_••••••••••••••••">
+              <button class="btn btn-secondary" id="btnToggleApiKeyVisibility" onclick="toggleApiKeyVisibility()" style="padding: 0 12px;" title="Show/Hide Key">
+                👁️
+              </button>
+              <button class="btn btn-primary" id="btnCopyApiKey" onclick="copyApiKeyToClipboard()" style="padding: 0 16px;" title="Copy to Clipboard">
+                📋 Copy
+              </button>
+            </div>
+            <div id="apiKeyCopyFeedback" style="font-size: 11.5px; color: var(--accent-green); margin-top: 6px; display: none;">
+              ✅ API Key copied to clipboard!
+            </div>
+          </div>
+
+          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-card);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <div style="font-weight: 600; font-size: 14px;">Strict API Key Enforcement</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                  Block order creation if <code style="color: var(--primary);">x-api-key</code> is missing or invalid.
+                </div>
+              </div>
+              <label class="switch-label">
+                <input type="checkbox" id="uiToggleRequireApiKey" class="switch-input" onchange="toggleRequireApiKey(this.checked)">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div style="margin-top: 20px; padding: 14px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: var(--radius-sm);">
+            <div style="font-weight: 600; font-size: 13px; color: var(--accent-red); margin-bottom: 4px;">⚠️ Roll API Key</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+              If you suspect your API key was leaked, regenerate it immediately. Previous keys will be revoked.
+            </div>
+            <button class="btn btn-secondary" onclick="confirmRegenerateApiKey()" style="border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 12px; padding: 6px 12px;">
+              🔄 Invalidate & Generate New Key
+            </button>
+          </div>
+
+          <!-- Quick Test Console -->
+          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-card);">
+            <div class="panel-title" style="margin-bottom: 8px;">
+              <span>⚡ Live API Authenticator Test</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+              Send a live test request right from your browser to verify this key works:
+            </p>
+            <div style="display: flex; gap: 8px;">
+              <input type="number" id="testOrderAmount" class="form-control" value="10.00" style="max-width: 120px;" placeholder="Amount">
+              <button class="btn btn-primary" onclick="testApiKeyOrderCreation()" style="flex: 1;">
+                🚀 Test Create Order (₹)
+              </button>
+            </div>
+            <div id="apiTestConsoleResult" style="margin-top: 12px; display: none;" class="code-box"></div>
+          </div>
+
+        </div>
+
+        <!-- Right Column: Interactive Integration Snippets -->
+        <div class="panel-card">
+          <div class="panel-title">
+            <span>💻 Integration Code Examples</span>
+          </div>
+
+          <!-- Language Subnav Tabs -->
+          <div class="code-subnav">
+            <button class="code-subtab active" id="codeTabCurl" onclick="switchCodeSnippet('curl')">cURL</button>
+            <button class="code-subtab" id="codeTabNodejs" onclick="switchCodeSnippet('nodejs')">Node.js</button>
+            <button class="code-subtab" id="codeTabPython" onclick="switchCodeSnippet('python')">Python</button>
+            <button class="code-subtab" id="codeTabPhp" onclick="switchCodeSnippet('php')">PHP</button>
+          </div>
+
+          <!-- Snippet Container -->
+          <div style="position: relative;">
+            <button class="copy-snippet-btn" onclick="copyCurrentSnippet()">
+              📋 Copy Code
+            </button>
+            <pre class="code-box" id="codeSnippetBox">// Loading snippet...</pre>
+          </div>
+
+          <!-- Webhook Callback Structure -->
+          <div style="margin-top: 20px;">
+            <div class="panel-title" style="margin-bottom: 6px;">
+              <span>📡 Webhook Payload Format</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+              When customer pays, the gateway fires an asynchronous POST request to your <code style="color: var(--primary);">webhookUrl</code>:
+            </p>
+            <pre class="code-box" style="color: #a78bfa;">{
+  "event": "payment.success",
+  "data": {
+    "orderCode": "ORD-ABC123",
+    "amount": 500.00,
+    "utr": "214771578746",
+    "sender": "MEENA KUMARI",
+    "paidAt": 1788475800000
+  }
+}</pre>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
 
   <!-- Modal: Create Order -->
   <div class="modal-overlay" id="modalCreateOrder">
