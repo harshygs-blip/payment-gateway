@@ -121,4 +121,13 @@ export async function initDatabase() {
   console.log('[DB] SQLite database initialized at:', dbPath);
 }
 
-export default { query, initDatabase, getSetting, setSetting, getAllSettings };
+export function closeDatabase() {
+  return new Promise((resolve, reject) => {
+    db.close((err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+export default { query, initDatabase, closeDatabase, getSetting, setSetting, getAllSettings };

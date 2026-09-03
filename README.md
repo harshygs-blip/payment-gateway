@@ -101,7 +101,7 @@ npm start
 npm test
 
 # Test database & matching engine
-node tests/testIntegration.js
+npm run test:integration
 ```
 
 ### Test Live IMAP Connection from Terminal
@@ -111,9 +111,88 @@ node scripts/testImap.js
 
 ---
 
+## 🏛️ Enterprise Backend Architecture
+
+The backend follows clean, modular design principles with strict separation of concerns:
+
+```
+personal-gateway/
+├── server.js               # Clean application bootstrap & graceful shutdown
+├── config.js               # Centralized configuration defaults
+├── Dockerfile              # Multi-stage production container
+├── .dockerignore           # Optimized build ignore rules
+├── db/
+│   └── database.js         # SQLite database schema, helpers & connection pooling
+├── src/
+│   ├── app.js              # Express app factory with middleware orchestration
+│   ├── controllers/        # Request handlers & response formatters
+│   │   ├── admin.controller.js
+│   │   ├── imap.controller.js
+│   │   ├── ledger.controller.js
+│   │   └── order.controller.js
+│   ├── models/             # Data Access Objects (DAOs) & DB query logic
+│   │   ├── order.model.js
+│   │   ├── payment.model.js
+│   │   └── setting.model.js
+│   ├── routes/             # Versioned REST API routing layer (/api & /api/v1)
+│   │   ├── index.js
+│   │   ├── admin.routes.js
+│   │   ├── health.routes.js
+│   │   └── order.routes.js
+│   ├── middlewares/        # Express pipeline middlewares
+│   │   ├── errorHandler.js # Standardized JSON errors & 404 handler
+│   │   └── requestLogger.js# Request performance & response timing logger
+│   ├── services/           # Core domain logic
+│   │   ├── emailParser.service.js
+│   │   ├── imapListener.service.js
+│   │   └── matchingEngine.service.js
+│   ├── jobs/               # Background scheduled jobs
+│   │   └── expiryCleaner.job.js
+│   ├── sockets/            # Real-time WebSocket connection & room handlers
+│   │   └── socketHandler.js
+│   └── utils/              # Shared utilities
+│       ├── logger.js
+│       └── qr.util.js
+├── public/                 # Glassmorphic Admin Dashboard & Checkout frontend
+└── tests/                  # Automated unit and integration test suites
+```
+
+---
+
+## 🐳 Docker & Cloud Deployment
+
+### 1. Run with Docker
+```bash
+docker build -t personal-upi-gateway .
+docker run -d -p 3000:3000 -v $(pwd)/data:/app/data --name upi-gateway personal-upi-gateway
+```
+
+### 2. Cloud PaaS (Render, Railway, Fly.io, Koyeb)
+- **Build Type**: Docker or Node.js
+- **Start Command**: `npm start`
+- **Health Check Path**: `/health` (returns `200 OK` with database and IMAP status)
+- **Port**: `3000` (or dynamic `$PORT`)
+
+---
+
 ## 📡 API Reference
 
-### 1. Create Checkout Session
+### 1. System Health Check
+```http
+GET /health
+```
+**Response:**
+```json
+{
+  "status": "OK",
+  "timestamp": "2026-09-03T23:17:29.350Z",
+  "uptime": "0h 5m 12s",
+  "database": { "engine": "SQLite", "status": "HEALTHY" },
+  "imap": { "enabled": true, "connected": true, "listening": true }
+}
+```
+
+### 2. Create Checkout Session
 ```http
 POST /api/orders/create
 Content-Type: application/json
@@ -139,7 +218,7 @@ Content-Type: application/json
 }
 ```
 
-### 2. Webhook Payload (Dispatched to your `webhookUrl`)
+### 3. Webhook Payload (Dispatched to your `webhookUrl`)
 ```json
 {
   "event": "payment.success",
@@ -157,3 +236,4 @@ Content-Type: application/json
 
 ## 📄 License
 ISC License. Free for personal and commercial use.
+
