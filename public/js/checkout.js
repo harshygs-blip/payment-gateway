@@ -21,6 +21,7 @@ const btnGPay = document.getElementById('btnGPay');
 const btnPhonePe = document.getElementById('btnPhonePe');
 const btnPaytm = document.getElementById('btnPaytm');
 const btnFamPay = document.getElementById('btnFamPay');
+const btnNavi = document.getElementById('btnNavi');
 
 const btnToggleUtr = document.getElementById('btnToggleUtr');
 const utrBox = document.getElementById('utrBox');
@@ -92,6 +93,16 @@ function renderOrder(order) {
   btnPhonePe.href = order.upiUri.replace('upi://', 'phonepe://');
   btnPaytm.href = order.upiUri.replace('upi://', 'paytmmp://');
   btnFamPay.href = order.upiUri; // FamPay registers standard upi:// scheme
+
+  if (btnNavi) {
+    const isAndroid = /android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      const rawParams = order.upiUri.replace(/^upi:\/\/pay\?/, '');
+      btnNavi.href = `intent://pay?${rawParams}#Intent;scheme=upi;package=com.naviapp;end`;
+    } else {
+      btnNavi.href = order.upiUri;
+    }
+  }
 }
 
 // 3. Live Countdown
