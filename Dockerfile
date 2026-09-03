@@ -9,8 +9,8 @@ WORKDIR /app
 # Copy dependency manifests first for optimal Docker layer caching
 COPY package*.json ./
 
-# Install dependencies cleanly
-RUN npm install --omit=dev
+# Install dependencies cleanly (suppress noisy transitive warnings)
+RUN npm install --omit=dev --no-audit --no-fund --loglevel=error
 
 # Copy all source files, configurations, and public static assets
 COPY . .
