@@ -1,0 +1,25 @@
+{
+  "name": "personal-upi-gateway",
+  "version": "1.0.0",
+  "description": "Self-hosted Personal UPI Gateway with IMAP Push and Time-Window Matching",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node tests/testMatching.js"
+  },
+  "keywords": ["upi", "gateway", "fampay", "imap", "payment"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "imapflow": "^1.0.171",
+    "mailparser": "^3.7.2",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
+    "sqlite3": "^5.1.7"
+  }
+}
