@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
 
 import { config } from './config.js';
-import { initDatabase, query } from './db/database.js';
+import { initDatabase, query, getSetting, setSetting, getAllSettings } from './db/database.js';
 import { processIncomingPayment, claimOrderWithUtr, setSocketIO } from './services/matchingEngine.js';
 import { 
   startImapListener, 
@@ -205,7 +205,10 @@ app.get('/api/admin/stats', async (req, res) => {
         imapStatus: getImapStatus(),
         merchantVpa: config.merchant.upiVpa,
         merchantName: config.merchant.name,
-        expiryMinutes: config.orderExpiryMinutes
+        expiryMinutes: config.orderExpiryMinutes,
+        imapUser: config.imap.user || '',
+        hasImapPass: Boolean(config.imap.pass),
+        imapFilter: config.imap.senderFilter.join(', ')
       }
     });
   } catch (err) {
@@ -294,9 +297,18 @@ app.post('/api/admin/simulate-payment', async (req, res) => {
 app.post('/api/admin/settings', async (req, res) => {
   try {
     const { upiVpa, merchantName, expiryMinutes } = req.body;
-    if (upiVpa) config.merchant.upiVpa = upiVpa.trim();
-    if (merchantName) config.merchant.name = merchantName.trim();
-    if (expiryMinutes) config.orderExpiryMinutes = parseInt(expiryMinutes, 10);
+    if (upiVpa) {
+      config.merchant.upiVpa = upiVpa.trim();
+      await setSetting('merchant_upi_vpa', config.merchant.upiVpa);
+    }
+    if (merchantName) {
+      config.merchant.name = merchantName.trim();
+      await setSetting('merchant_name', config.merchant.name);
+    }
+    if (expiryMinutes) {
+      config.orderExpiryMinutes = parseInt(expiryMinutes, 10);
+      await setSetting('order_expiry_minutes', config.orderExpiryMinutes);
+    }
 
     io.to('admin_room').emit('settings_updated', {
       merchantVpa: config.merchant.upiVpa,
@@ -304,7 +316,7 @@ app.post('/api/admin/settings', async (req, res) => {
       expiryMinutes: config.orderExpiryMinutes
     });
 
-    return res.json({ success: true, message: 'Settings updated successfully' });
+    return res.json({ success: true, message: 'Settings saved to database successfully!' });
   } catch (err) {
     console.error('[Settings Update Error]:', err);
     return res.status(500).json({ error: 'Failed to update settings' });
@@ -326,13 +338,23 @@ app.post('/api/admin/imap/test', async (req, res) => {
 });
 
 /**
- * 11. Dynamic Start/Stop/Restart IMAP Listener
+ * 11. Dynamic Start/Stop/Restart IMAP Listener (Persisted to Database)
  */
 app.post('/api/admin/imap/restart', async (req, res) => {
   try {
     const { user, pass, enabled, host, port, senderFilter } = req.body;
+
+    if (enabled !== undefined) await setSetting('imap_enabled', enabled ? 'true' : 'false');
+    if (user !== undefined) await setSetting('imap_user', user.trim());
+    if (pass) await setSetting('imap_pass', pass.trim().replace(/\s+/g, ''));
+    if (senderFilter !== undefined) await setSetting('imap_filter', senderFilter.trim());
+
     await restartImapListener({ user, pass, enabled, host, port, senderFilter }, io);
-    return res.json({ success: true, status: getImapStatus() });
+    return res.json({ 
+      success: true, 
+      status: getImapStatus(),
+      message: 'IMAP settings saved to database & applied!' 
+    });
   } catch (err) {
     console.error('[IMAP Restart Error]:', err);
     return res.status(500).json({ success: false, error: err.message });
@@ -408,7 +430,29 @@ setInterval(async () => {
 
 async function start() {
   await initDatabase();
-  
+
+  // Hydrate runtime config from SQLite database
+  const dbVpa = await getSetting('merchant_upi_vpa');
+  if (dbVpa) config.merchant.upiVpa = dbVpa;
+
+  const dbName = await getSetting('merchant_name');
+  if (dbName) config.merchant.name = dbName;
+
+  const dbExpiry = await getSetting('order_expiry_minutes');
+  if (dbExpiry) config.orderExpiryMinutes = parseInt(dbExpiry, 10);
+
+  const dbImapEnabled = await getSetting('imap_enabled');
+  if (dbImapEnabled !== '') config.imap.enabled = dbImapEnabled === 'true';
+
+  const dbImapUser = await getSetting('imap_user');
+  if (dbImapUser) config.imap.user = dbImapUser;
+
+  const dbImapPass = await getSetting('imap_pass');
+  if (dbImapPass) config.imap.pass = dbImapPass;
+
+  const dbImapFilter = await getSetting('imap_filter');
+  if (dbImapFilter) config.imap.senderFilter = dbImapFilter.split(',').map(s => s.trim().toLowerCase());
+
   server.listen(config.port, () => {
     console.log(`\n======================================================`);
     console.log(`🚀 Personal UPI Gateway is live at: http://localhost:${config.port}`);

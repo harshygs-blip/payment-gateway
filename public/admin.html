@@ -28,7 +28,6 @@
         <span id="imapText">IMAP: Checking...</span>
       </div>
 
-      <button class="btn btn-secondary" id="btnOpenSettings">⚙️ Settings</button>
       <button class="btn btn-primary" id="btnOpenCreateOrder">+ Create Order</button>
     </div>
   </nav>
@@ -36,131 +35,280 @@
   <!-- Dashboard Main Content -->
   <main class="dashboard-container">
     
-    <!-- 4 Key Metrics -->
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Total Collected Volume</span>
-          <span>💰</span>
-        </div>
-        <div class="metric-val" id="metricRevenue">₹ 0.00</div>
-        <div class="metric-sub">Across all completed UPI orders</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Total Orders</span>
-          <span>📦</span>
-        </div>
-        <div class="metric-val" id="metricTotalOrders">0</div>
-        <div class="metric-sub">Generated checkout sessions</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Paid Orders</span>
-          <span>✅</span>
-        </div>
-        <div class="metric-val" id="metricPaidOrders">0</div>
-        <div class="metric-sub" id="metricConversion">0% Success Rate</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-header">
-          <span>Active Pending Sessions</span>
-          <span>⏳</span>
-        </div>
-        <div class="metric-val" id="metricPendingOrders" style="color: var(--accent-amber);">0</div>
-        <div class="metric-sub">Currently waiting for payment</div>
-      </div>
+    <!-- Top Navigation Tabs (Zero .env hassle!) -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" id="tabBtnDashboard" onclick="switchTab('dashboard')">
+        📊 Live Dashboard & Orders
+      </button>
+      <button class="tab-btn" id="tabBtnConfig" onclick="switchTab('config')">
+        ⚡ Gateway Controls & Auto-Detector (Zero .env)
+      </button>
     </div>
 
-    <!-- Main Split Section: Orders Table & Interactive Simulator -->
-    <div class="dashboard-split">
+    <!-- ==================== TAB 1: LIVE DASHBOARD ==================== -->
+    <div class="tab-content active" id="tabContentDashboard">
       
-      <!-- Left: Orders Table -->
-      <div class="panel-card">
-        <div class="panel-title">
-          <span>Recent Orders & Checkout Sessions</span>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadOrders('ALL')">All</button>
-            <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadOrders('PENDING')">Pending</button>
-            <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadOrders('PAID')">Paid</button>
+      <!-- 4 Key Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Total Collected Volume</span>
+            <span>💰</span>
           </div>
+          <div class="metric-val" id="metricRevenue">₹ 0.00</div>
+          <div class="metric-sub">Across all completed UPI orders</div>
         </div>
 
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Order Code</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Customer</th>
-                <th>Time / UTR</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="ordersTableBody">
-              <tr>
-                <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 30px;">
-                  Loading orders...
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Total Orders</span>
+            <span>📦</span>
+          </div>
+          <div class="metric-val" id="metricTotalOrders">0</div>
+          <div class="metric-sub">Generated checkout sessions</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Paid Orders</span>
+            <span>✅</span>
+          </div>
+          <div class="metric-val" id="metricPaidOrders">0</div>
+          <div class="metric-sub" id="metricConversion">0% Success Rate</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-header">
+            <span>Active Pending Sessions</span>
+            <span>⏳</span>
+          </div>
+          <div class="metric-val" id="metricPendingOrders" style="color: var(--accent-amber);">0</div>
+          <div class="metric-sub">Currently waiting for payment</div>
         </div>
       </div>
 
-      <!-- Right Column: Payment Simulator & Live Payment Feed -->
-      <div>
+      <!-- Split Section: Orders Table & Interactive Simulator -->
+      <div class="dashboard-split">
         
-        <!-- Interactive Simulator Card -->
-        <div class="panel-card" style="border-left: 3px solid #a855f7;">
-          <div class="panel-title">
-            <span>⚡ Payment Simulator</span>
-            <span style="font-size: 11px; color: #c084fc;">Zero-Risk Test</span>
-          </div>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
-            Simulate an incoming UPI/FamPay payment to test the Time-Window Matching Engine without sending real money!
-          </p>
-
-          <form id="simulatorForm">
-            <div class="form-group">
-              <label class="form-label">Amount (₹)</label>
-              <input type="number" id="simAmount" class="form-control" placeholder="e.g. 250" step="0.01" required>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">UTR / Reference No. (Optional)</label>
-              <input type="text" id="simUtr" class="form-control" placeholder="Leave empty for auto-generated UTR">
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Sender Name / UPI ID</label>
-              <input type="text" id="simSender" class="form-control" value="Harsh (Simulated Buyer)">
-            </div>
-
-            <button type="submit" class="btn btn-sim" style="width: 100%; justify-content: center;" id="btnSimulate">
-              🚀 Simulate Incoming Payment
-            </button>
-          </form>
-
-          <div id="simResult" style="margin-top: 12px; font-size: 12px; display: none;"></div>
-        </div>
-
-        <!-- Live Payment Feed -->
+        <!-- Left: Orders Table -->
         <div class="panel-card">
           <div class="panel-title">
-            <span>📥 Incoming Payments Log</span>
-            <span style="font-size: 11px; color: var(--text-dim);" id="paymentsCount">0 items</span>
-          </div>
-
-          <div id="paymentsFeed" style="display: flex; flex-direction: column; gap: 10px; max-height: 380px; overflow-y: auto;">
-            <div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 20px;">
-              No payments recorded yet.
+            <span>Recent Orders & Checkout Sessions</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadOrders('ALL')">All</button>
+              <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadOrders('PENDING')">Pending</button>
+              <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="loadOrders('PAID')">Paid</button>
             </div>
           </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Order Code</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Customer</th>
+                  <th>Time / UTR</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="ordersTableBody">
+                <tr>
+                  <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 30px;">
+                    Loading orders...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right Column: Payment Simulator & Live Payment Feed -->
+        <div>
+          
+          <!-- Interactive Simulator Card -->
+          <div class="panel-card" style="border-left: 3px solid #a855f7;">
+            <div class="panel-title">
+              <span>⚡ Payment Simulator</span>
+              <span style="font-size: 11px; color: #c084fc;">Zero-Risk Test</span>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+              Simulate an incoming UPI/FamPay payment to test the Time-Window Matching Engine without sending real money!
+            </p>
+
+            <form id="simulatorForm">
+              <div class="form-group">
+                <label class="form-label">Amount (₹)</label>
+                <input type="number" id="simAmount" class="form-control" placeholder="e.g. 250" step="0.01" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">UTR / Reference No. (Optional)</label>
+                <input type="text" id="simUtr" class="form-control" placeholder="Leave empty for auto-generated UTR">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Sender Name / UPI ID</label>
+                <input type="text" id="simSender" class="form-control" value="Harsh (Simulated Buyer)">
+              </div>
+
+              <button type="submit" class="btn btn-sim" style="width: 100%; justify-content: center;" id="btnSimulate">
+                🚀 Simulate Incoming Payment
+              </button>
+            </form>
+
+            <div id="simResult" style="margin-top: 12px; font-size: 12px; display: none;"></div>
+          </div>
+
+          <!-- Live Payment Feed -->
+          <div class="panel-card">
+            <div class="panel-title">
+              <span>📥 Incoming Payments Log</span>
+              <span style="font-size: 11px; color: var(--text-dim);" id="paymentsCount">0 items</span>
+            </div>
+
+            <div id="paymentsFeed" style="display: flex; flex-direction: column; gap: 10px; max-height: 380px; overflow-y: auto;">
+              <div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 20px;">
+                No payments recorded yet.
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ==================== TAB 2: FULL FRONTEND CONFIGURATOR ==================== -->
+    <div class="tab-content" id="tabContentConfig">
+      
+      <div class="dashboard-split">
+        
+        <!-- Left: FamPay / Gmail Auto-Detector Setup -->
+        <div class="panel-card" style="border-top: 3px solid #38bdf8;">
+          <div class="panel-title">
+            <span>📬 FamPay / Gmail Auto-Detection (IMAP Push)</span>
+            <span id="uiImapBadge" class="badge PENDING" style="font-size: 11px;">Disabled</span>
+          </div>
+
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+            Enter your Gmail credentials below to automatically detect FamPay/Bank alert emails in real-time. 
+            Everything is saved directly to your database — <b>no terminal commands or .env editing needed!</b>
+          </p>
+
+          <form id="frontendImapForm">
+            <!-- Big Live Toggle Switch -->
+            <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-card); border-radius: var(--radius-sm); padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <div>
+                <div style="font-weight: 700; color: #fff; font-size: 14px;">Enable Real-Time Email Listener</div>
+                <div style="font-size: 12px; color: var(--text-muted);">Listens to incoming payment emails via IMAP IDLE without polling</div>
+              </div>
+              <label class="switch-label">
+                <input type="checkbox" id="uiImapEnabled" class="switch-input">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Gmail Address *</label>
+              <input type="email" id="uiImapUser" class="form-control" placeholder="your_email@gmail.com" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Google 16-Character App Password *</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="password" id="uiImapPass" class="form-control" placeholder="abcd efgh ijkl mnop">
+                <button type="button" class="btn btn-secondary" id="btnToggleShowPass" style="padding: 0 14px;" title="Show/Hide Password">👁️</button>
+              </div>
+              <div style="font-size: 11px; color: var(--text-dim); margin-top: 6px;">
+                Requires 2-Step Verification ON. Generate here: 
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: #38bdf8; text-decoration: underline;">
+                  Google Account &rarr; Security &rarr; App Passwords ↗
+                </a>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Sender / Subject Filter Keywords</label>
+              <input type="text" id="uiImapFilter" class="form-control" value="fampay, famapp, alerts">
+              <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
+                Filters out non-payment emails.
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+              <button type="button" class="btn btn-secondary" style="flex: 1; justify-content: center;" id="uiBtnTestImap">
+                🔍 Test Connection (1-Click)
+              </button>
+              <button type="submit" class="btn btn-primary" style="flex: 1.2; justify-content: center;" id="uiBtnSaveImap">
+                💾 Save & Start Live Listener
+              </button>
+            </div>
+          </form>
+
+          <!-- Test / Save Feedback Alert -->
+          <div id="uiImapFeedback" style="display: none; margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 13px;"></div>
+        </div>
+
+        <!-- Right: Store & UPI Settings + Live Mailbox Inspector -->
+        <div>
+          
+          <!-- Card: UPI & Merchant Profile -->
+          <div class="panel-card">
+            <div class="panel-title">
+              <span>💳 UPI ID & Store Profile</span>
+              <span style="font-size: 11px; color: var(--text-dim);">Live Payments</span>
+            </div>
+
+            <form id="frontendSettingsForm">
+              <div class="form-group">
+                <label class="form-label">Merchant UPI ID (VPA) *</label>
+                <input type="text" id="uiUpiVpa" class="form-control" placeholder="yourname@fam" required>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
+                  This is the UPI ID embedded in the dynamic QR code for customers.
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Merchant / Business Name *</label>
+                <input type="text" id="uiMerchantName" class="form-control" placeholder="Personal Gateway" required>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Order Expiry Timeout (Minutes)</label>
+                <input type="number" id="uiExpiryMinutes" class="form-control" value="5" min="1" max="60">
+              </div>
+
+              <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;" id="uiBtnSaveSettings">
+                💾 Save UPI Settings
+              </button>
+            </form>
+
+            <div id="uiSettingsFeedback" style="display: none; margin-top: 12px; padding: 10px; border-radius: 8px; font-size: 12px;"></div>
+          </div>
+
+          <!-- Card: Diagnostic Inbox Scanner -->
+          <div class="panel-card">
+            <div class="panel-title">
+              <span>🔎 Diagnostic Inbox Scanner</span>
+              <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" id="uiBtnScanInbox">
+                📥 Scan Inbox Now
+              </button>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+              Directly fetches your latest 5 emails from Gmail and runs the FamPay parser on them to test live detection.
+            </p>
+
+            <div id="inboxScanResults" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+              <div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 16px;">
+                Click "Scan Inbox Now" to test email parsing with your live mailbox.
+              </div>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -200,80 +348,6 @@
 
         <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;" id="btnSubmitOrder">
           Generate Checkout Session
-        </button>
-      </form>
-    </div>
-  </div>
-
-  <!-- Modal: Settings -->
-  <div class="modal-overlay" id="modalSettings">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3 class="modal-title">Gateway Settings</h3>
-        <button class="modal-close" onclick="closeModal('modalSettings')">&times;</button>
-      </div>
-
-      <form id="settingsForm">
-        <div class="form-group">
-          <label class="form-label">Merchant UPI VPA (ID) *</label>
-          <input type="text" id="settingUpiVpa" class="form-control" placeholder="harsh@fam" required>
-          <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
-            The UPI ID that will receive payments (e.g. FamPay, PhonePe, Paytm QR).
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Merchant Display Name *</label>
-          <input type="text" id="settingMerchantName" class="form-control" placeholder="Personal Gateway" required>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Order Expiry Timeout (Minutes)</label>
-          <input type="number" id="settingExpiryMinutes" class="form-control" value="5" min="1" max="60">
-        </div>
-
-        <div style="border-top: 1px solid var(--border-card); margin: 18px 0; padding-top: 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div style="font-size: 14px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
-              <span>📬 FamPay / Gmail IMAP Push</span>
-            </div>
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--primary);">
-              <input type="checkbox" id="settingImapEnabled" style="accent-color: #38bdf8; width: 16px; height: 16px;">
-              Enable Live Listener
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Gmail / Email Address</label>
-            <input type="email" id="settingImapUser" class="form-control" placeholder="your_email@gmail.com">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">16-Character Google App Password</label>
-            <input type="password" id="settingImapPass" class="form-control" placeholder="abcd efgh ijkl mnop">
-            <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
-              Requires 2-Step Verification ON. Generate in: <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: #38bdf8; text-decoration: none;">Google Account &rarr; App Passwords</a>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Sender / Subject Filter (Comma Separated)</label>
-            <input type="text" id="settingImapFilter" class="form-control" value="fampay, alerts">
-          </div>
-
-          <!-- Test Button -->
-          <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-            <button type="button" class="btn btn-secondary" style="flex: 1; justify-content: center;" id="btnTestImap">
-              🔍 Test Connection
-            </button>
-          </div>
-
-          <!-- Test Feedback -->
-          <div id="imapTestFeedback" style="display: none; padding: 10px; border-radius: 8px; font-size: 12px; margin-bottom: 14px;"></div>
-        </div>
-
-        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;" id="btnSaveSettings">
-          Save Settings & Update Gateway
         </button>
       </form>
     </div>

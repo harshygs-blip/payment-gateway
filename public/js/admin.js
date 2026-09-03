@@ -1,7 +1,7 @@
 let socket = null;
 let currentFilter = 'ALL';
 
-// Elements
+// Elements - Metrics
 const metricRevenue = document.getElementById('metricRevenue');
 const metricTotalOrders = document.getElementById('metricTotalOrders');
 const metricPaidOrders = document.getElementById('metricPaidOrders');
@@ -10,11 +10,13 @@ const metricPendingOrders = document.getElementById('metricPendingOrders');
 
 const imapDot = document.getElementById('imapDot');
 const imapText = document.getElementById('imapText');
+const uiImapBadge = document.getElementById('uiImapBadge');
 
 const ordersTableBody = document.getElementById('ordersTableBody');
 const paymentsFeed = document.getElementById('paymentsFeed');
 const paymentsCount = document.getElementById('paymentsCount');
 
+// Elements - Simulator
 const simulatorForm = document.getElementById('simulatorForm');
 const simAmount = document.getElementById('simAmount');
 const simUtr = document.getElementById('simUtr');
@@ -22,23 +24,43 @@ const simSender = document.getElementById('simSender');
 const btnSimulate = document.getElementById('btnSimulate');
 const simResult = document.getElementById('simResult');
 
+// Elements - Create Order Modal
 const createOrderForm = document.getElementById('createOrderForm');
 const orderAmount = document.getElementById('orderAmount');
 const orderCustomerName = document.getElementById('orderCustomerName');
 const orderCustomerPhone = document.getElementById('orderCustomerPhone');
 const orderWebhook = document.getElementById('orderWebhook');
 
-const settingsForm = document.getElementById('settingsForm');
-const settingUpiVpa = document.getElementById('settingUpiVpa');
-const settingMerchantName = document.getElementById('settingMerchantName');
-const settingExpiryMinutes = document.getElementById('settingExpiryMinutes');
+// Elements - Frontend Configurator
+const frontendImapForm = document.getElementById('frontendImapForm');
+const uiImapEnabled = document.getElementById('uiImapEnabled');
+const uiImapUser = document.getElementById('uiImapUser');
+const uiImapPass = document.getElementById('uiImapPass');
+const uiImapFilter = document.getElementById('uiImapFilter');
+const btnToggleShowPass = document.getElementById('btnToggleShowPass');
+const uiBtnTestImap = document.getElementById('uiBtnTestImap');
+const uiBtnSaveImap = document.getElementById('uiBtnSaveImap');
+const uiImapFeedback = document.getElementById('uiImapFeedback');
 
-const settingImapEnabled = document.getElementById('settingImapEnabled');
-const settingImapUser = document.getElementById('settingImapUser');
-const settingImapPass = document.getElementById('settingImapPass');
-const settingImapFilter = document.getElementById('settingImapFilter');
-const btnTestImap = document.getElementById('btnTestImap');
-const imapTestFeedback = document.getElementById('imapTestFeedback');
+const frontendSettingsForm = document.getElementById('frontendSettingsForm');
+const uiUpiVpa = document.getElementById('uiUpiVpa');
+const uiMerchantName = document.getElementById('uiMerchantName');
+const uiExpiryMinutes = document.getElementById('uiExpiryMinutes');
+const uiBtnSaveSettings = document.getElementById('uiBtnSaveSettings');
+const uiSettingsFeedback = document.getElementById('uiSettingsFeedback');
+
+const uiBtnScanInbox = document.getElementById('uiBtnScanInbox');
+const inboxScanResults = document.getElementById('inboxScanResults');
+
+// Tab Switching Logic
+function switchTab(tab) {
+  document.getElementById('tabBtnDashboard').classList.toggle('active', tab === 'dashboard');
+  document.getElementById('tabBtnConfig').classList.toggle('active', tab === 'config');
+
+  document.getElementById('tabContentDashboard').classList.toggle('active', tab === 'dashboard');
+  document.getElementById('tabContentConfig').classList.toggle('active', tab === 'config');
+}
+window.switchTab = switchTab;
 
 // Modal Helpers
 function openModal(id) {
@@ -47,18 +69,28 @@ function openModal(id) {
 function closeModal(id) {
   document.getElementById(id).classList.remove('active');
 }
+window.closeModal = closeModal;
 
 document.getElementById('btnOpenCreateOrder').addEventListener('click', () => openModal('modalCreateOrder'));
-document.getElementById('btnOpenSettings').addEventListener('click', () => openModal('modalSettings'));
 
-// Close modal on click outside
 window.addEventListener('click', (e) => {
   if (e.target.classList.contains('modal-overlay')) {
     e.target.classList.remove('active');
   }
 });
 
-// 1. Load Stats
+// Show / Hide Password
+btnToggleShowPass.addEventListener('click', () => {
+  if (uiImapPass.type === 'password') {
+    uiImapPass.type = 'text';
+    btnToggleShowPass.innerText = '🔒';
+  } else {
+    uiImapPass.type = 'password';
+    btnToggleShowPass.innerText = '👁️';
+  }
+});
+
+// 1. Load Stats and Settings into UI
 async function loadStats() {
   try {
     const res = await fetch('/api/admin/stats');
@@ -77,13 +109,17 @@ async function loadStats() {
     // IMAP Status
     updateImapPill(stats.imapStatus);
 
-    // Populate Settings modal
-    settingUpiVpa.value = stats.merchantVpa || '';
-    settingMerchantName.value = stats.merchantName || '';
-    settingExpiryMinutes.value = stats.expiryMinutes || 5;
+    // Populate Frontend Configurator fields
+    uiUpiVpa.value = stats.merchantVpa || '';
+    uiMerchantName.value = stats.merchantName || '';
+    uiExpiryMinutes.value = stats.expiryMinutes || 5;
+
     if (stats.imapStatus) {
-      settingImapEnabled.checked = Boolean(stats.imapStatus.enabled);
-      if (stats.imapStatus.user) settingImapUser.value = stats.imapStatus.user;
+      uiImapEnabled.checked = Boolean(stats.imapStatus.enabled);
+      if (stats.imapStatus.user) uiImapUser.value = stats.imapStatus.user;
+    }
+    if (stats.imapFilter) {
+      uiImapFilter.value = stats.imapFilter;
     }
 
   } catch (err) {
@@ -97,16 +133,32 @@ function updateImapPill(status) {
   imapDot.className = 'status-dot';
   if (!status.enabled) {
     imapDot.classList.add('disconnected');
-    imapText.innerText = 'IMAP: Disabled (Simulator Active)';
+    imapText.innerText = 'IMAP: Disabled';
+    if (uiImapBadge) {
+      uiImapBadge.className = 'badge PENDING';
+      uiImapBadge.innerText = 'Disabled';
+    }
   } else if (status.connected && status.listening) {
     imapDot.classList.add('connected');
     imapText.innerText = 'IMAP: Live Listening';
+    if (uiImapBadge) {
+      uiImapBadge.className = 'badge PAID';
+      uiImapBadge.innerText = 'Live Listening (Active)';
+    }
   } else if (status.connected) {
     imapDot.classList.add('idle');
     imapText.innerText = 'IMAP: Connected';
+    if (uiImapBadge) {
+      uiImapBadge.className = 'badge PENDING';
+      uiImapBadge.innerText = 'Connected (Idle)';
+    }
   } else {
     imapDot.classList.add('disconnected');
     imapText.innerText = status.lastError ? `IMAP: Error` : 'IMAP: Disconnected';
+    if (uiImapBadge) {
+      uiImapBadge.className = 'badge EXPIRED';
+      uiImapBadge.innerText = status.lastError || 'Disconnected';
+    }
   }
 }
 
@@ -252,14 +304,10 @@ createOrderForm.addEventListener('submit', async (e) => {
       closeModal('modalCreateOrder');
       createOrderForm.reset();
       
-      // Load updated data
       loadStats();
       loadOrders(currentFilter);
 
-      // Pre-fill simulator with this amount for quick testing!
       simAmount.value = data.order.amount;
-
-      // Open new checkout page in new tab
       window.open(data.order.checkoutUrl, '_blank');
     } else {
       alert(data.error || 'Failed to create order');
@@ -320,23 +368,23 @@ simulatorForm.addEventListener('submit', async (e) => {
   }
 });
 
-// 6. Test IMAP Button Handler
-btnTestImap.addEventListener('click', async () => {
-  const user = settingImapUser.value.trim();
-  const pass = settingImapPass.value.trim();
+// 6. Test IMAP 1-Click Button Handler
+uiBtnTestImap.addEventListener('click', async () => {
+  const user = uiImapUser.value.trim();
+  const pass = uiImapPass.value.trim();
 
   if (!user || !pass) {
-    imapTestFeedback.style.display = 'block';
-    imapTestFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
-    imapTestFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
-    imapTestFeedback.style.color = '#f87171';
-    imapTestFeedback.innerText = '⚠️ Please enter both your Gmail address and 16-character App Password to test.';
+    uiImapFeedback.style.display = 'block';
+    uiImapFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+    uiImapFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+    uiImapFeedback.style.color = '#f87171';
+    uiImapFeedback.innerText = '⚠️ Please enter both your Gmail address and 16-character Google App Password to test.';
     return;
   }
 
-  btnTestImap.disabled = true;
-  btnTestImap.innerText = '⏳ Connecting to Gmail IMAP...';
-  imapTestFeedback.style.display = 'none';
+  uiBtnTestImap.disabled = true;
+  uiBtnTestImap.innerText = '⏳ Connecting to Gmail...';
+  uiImapFeedback.style.display = 'none';
 
   try {
     const res = await fetch('/api/admin/imap/test', {
@@ -346,81 +394,160 @@ btnTestImap.addEventListener('click', async () => {
     });
 
     const data = await res.json();
-    imapTestFeedback.style.display = 'block';
+    uiImapFeedback.style.display = 'block';
 
     if (data.success) {
-      imapTestFeedback.style.background = 'rgba(16, 185, 129, 0.15)';
-      imapTestFeedback.style.border = '1px solid rgba(16, 185, 129, 0.3)';
-      imapTestFeedback.style.color = '#34d399';
-      imapTestFeedback.innerHTML = `✅ <b>Connection Successful!</b><br>Authenticated with Gmail. Found <b>${data.totalMessages}</b> messages in INBOX (${data.unseenMessages} unread).`;
+      uiImapFeedback.style.background = 'rgba(16, 185, 129, 0.15)';
+      uiImapFeedback.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      uiImapFeedback.style.color = '#34d399';
+      uiImapFeedback.innerHTML = `✅ <b>Connection Successful!</b><br>Logged into Gmail. Found <b>${data.totalMessages}</b> emails in INBOX (${data.unseenMessages} unread).`;
     } else {
-      imapTestFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
-      imapTestFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
-      imapTestFeedback.style.color = '#f87171';
-      imapTestFeedback.innerHTML = `❌ <b>Connection Failed:</b><br>${data.error}`;
+      uiImapFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+      uiImapFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      uiImapFeedback.style.color = '#f87171';
+      uiImapFeedback.innerHTML = `❌ <b>Connection Failed:</b><br>${data.error}`;
     }
   } catch (err) {
-    imapTestFeedback.style.display = 'block';
-    imapTestFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
-    imapTestFeedback.style.color = '#f87171';
-    imapTestFeedback.innerText = 'Network error testing IMAP: ' + err.message;
+    uiImapFeedback.style.display = 'block';
+    uiImapFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+    uiImapFeedback.style.color = '#f87171';
+    uiImapFeedback.innerText = 'Network error: ' + err.message;
   } finally {
-    btnTestImap.disabled = false;
-    btnTestImap.innerText = '🔍 Test Connection';
+    uiBtnTestImap.disabled = false;
+    uiBtnTestImap.innerText = '🔍 Test Connection (1-Click)';
   }
 });
 
-// 7. Settings Handler
-settingsForm.addEventListener('submit', async (e) => {
+// 7. Save & Start Live IMAP Listener Handler (Zero .env)
+frontendImapForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const saveBtn = document.getElementById('btnSaveSettings');
-  saveBtn.disabled = true;
-  saveBtn.innerText = 'Saving...';
+  uiBtnSaveImap.disabled = true;
+  uiBtnSaveImap.innerText = 'Saving to Database...';
 
   try {
-    // 1. Save general settings
+    const payload = {
+      enabled: uiImapEnabled.checked,
+      user: uiImapUser.value.trim(),
+      senderFilter: uiImapFilter.value.trim()
+    };
+    if (uiImapPass.value.trim()) {
+      payload.pass = uiImapPass.value.trim();
+    }
+
+    const res = await fetch('/api/admin/imap/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    uiImapFeedback.style.display = 'block';
+    if (data.success) {
+      uiImapFeedback.style.background = 'rgba(16, 185, 129, 0.15)';
+      uiImapFeedback.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      uiImapFeedback.style.color = '#34d399';
+      uiImapFeedback.innerHTML = `💾 <b>Settings Saved to Database!</b><br>IMAP Live Listener is now <b>${payload.enabled ? '🟢 ACTIVE & LISTENING' : '⚪ DISABLED'}</b>.`;
+      loadStats();
+    } else {
+      uiImapFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+      uiImapFeedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      uiImapFeedback.style.color = '#f87171';
+      uiImapFeedback.innerHTML = `❌ ${data.error || 'Failed to apply settings'}`;
+    }
+  } catch (err) {
+    uiImapFeedback.style.display = 'block';
+    uiImapFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+    uiImapFeedback.style.color = '#f87171';
+    uiImapFeedback.innerText = 'Failed: ' + err.message;
+  } finally {
+    uiBtnSaveImap.disabled = false;
+    uiBtnSaveImap.innerText = '💾 Save & Start Live Listener';
+  }
+});
+
+// 8. Save UPI & Merchant Settings (Zero .env)
+frontendSettingsForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  uiBtnSaveSettings.disabled = true;
+  uiBtnSaveSettings.innerText = 'Saving...';
+
+  try {
     const res = await fetch('/api/admin/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        upiVpa: settingUpiVpa.value,
-        merchantName: settingMerchantName.value,
-        expiryMinutes: settingExpiryMinutes.value
+        upiVpa: uiUpiVpa.value.trim(),
+        merchantName: uiMerchantName.value.trim(),
+        expiryMinutes: uiExpiryMinutes.value
       })
     });
     const data = await res.json();
 
-    // 2. Restart/Update IMAP listener if configured
-    const imapPayload = {
-      enabled: settingImapEnabled.checked,
-      user: settingImapUser.value.trim(),
-      senderFilter: settingImapFilter.value
-    };
-    if (settingImapPass.value.trim()) {
-      imapPayload.pass = settingImapPass.value.trim();
-    }
-
-    const imapRes = await fetch('/api/admin/imap/restart', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(imapPayload)
-    });
-    const imapData = await imapRes.json();
-
+    uiSettingsFeedback.style.display = 'block';
     if (data.success) {
-      alert('Settings updated successfully! IMAP Listener is ' + (settingImapEnabled.checked ? 'ENABLED' : 'DISABLED') + '.');
-      closeModal('modalSettings');
+      uiSettingsFeedback.style.background = 'rgba(16, 185, 129, 0.15)';
+      uiSettingsFeedback.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      uiSettingsFeedback.style.color = '#34d399';
+      uiSettingsFeedback.innerText = '✅ UPI settings saved to database successfully!';
       loadStats();
+    } else {
+      uiSettingsFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+      uiSettingsFeedback.style.color = '#f87171';
+      uiSettingsFeedback.innerText = '❌ ' + data.error;
     }
   } catch (err) {
-    alert('Failed to update settings: ' + err.message);
+    uiSettingsFeedback.style.display = 'block';
+    uiSettingsFeedback.style.background = 'rgba(239, 68, 68, 0.15)';
+    uiSettingsFeedback.style.color = '#f87171';
+    uiSettingsFeedback.innerText = 'Error: ' + err.message;
   } finally {
-    saveBtn.disabled = false;
-    saveBtn.innerText = 'Save Settings & Update Gateway';
+    uiBtnSaveSettings.disabled = false;
+    uiBtnSaveSettings.innerText = '💾 Save UPI Settings';
   }
 });
 
-// 7. WebSockets Realtime Sync
+// 9. Scan Inbox Now Button (Diagnostic live tester)
+uiBtnScanInbox.addEventListener('click', async () => {
+  uiBtnScanInbox.disabled = true;
+  uiBtnScanInbox.innerText = 'Scanning...';
+  inboxScanResults.innerHTML = '<div style="text-align:center; color: var(--text-dim); padding: 14px;">Connecting to Gmail & scanning latest emails...</div>';
+
+  try {
+    const res = await fetch('/api/admin/imap/recent');
+    const data = await res.json();
+
+    if (data.success && data.emails && data.emails.length > 0) {
+      inboxScanResults.innerHTML = data.emails.map(em => {
+        const hasPayment = em.parsedPayment !== null;
+        return `
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-card); border-radius: 8px; padding: 10px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-weight: 600; font-size: 12px; color: #fff;">${em.subject}</span>
+              <span class="badge ${hasPayment ? 'PAID' : 'PENDING'}" style="font-size: 10px;">
+                ${hasPayment ? `Parsed: ₹${em.parsedPayment.amount}` : 'No Payment Pattern'}
+              </span>
+            </div>
+            <div style="font-size: 11px; color: var(--text-dim);">From: ${em.from}</div>
+            ${hasPayment ? `
+              <div style="font-size: 11px; color: var(--accent-green); margin-top: 4px; font-family: 'JetBrains Mono';">
+                UTR: ${em.parsedPayment.utr} | Sender: ${em.parsedPayment.sender}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    } else {
+      inboxScanResults.innerHTML = `<div style="color: var(--accent-amber); font-size: 12px; padding: 14px; text-align: center;">${data.error || 'No matching emails found or IMAP credentials not connected yet.'}</div>`;
+    }
+  } catch (err) {
+    inboxScanResults.innerHTML = `<div style="color: #ef4444; font-size: 12px; padding: 14px; text-align: center;">Error scanning: ${err.message}</div>`;
+  } finally {
+    uiBtnScanInbox.disabled = false;
+    uiBtnScanInbox.innerText = '📥 Scan Inbox Now';
+  }
+});
+
+// 10. WebSockets Realtime Sync
 function initSocket() {
   if (typeof io === 'undefined') return;
 
@@ -431,14 +558,12 @@ function initSocket() {
     socket.emit('join_admin');
   });
 
-  socket.on('new_order', (order) => {
-    console.log('[Socket] New order created:', order);
+  socket.on('new_order', () => {
     loadStats();
     loadOrders(currentFilter);
   });
 
-  socket.on('payment_event', (event) => {
-    console.log('[Socket] Payment event:', event);
+  socket.on('payment_event', () => {
     loadStats();
     loadOrders(currentFilter);
     loadPayments();

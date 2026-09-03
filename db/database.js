@@ -43,6 +43,37 @@ export const query = {
   }
 };
 
+export async function getSetting(key, defaultValue = '') {
+  try {
+    const row = await query.get('SELECT value FROM settings WHERE key = ?', [key]);
+    return row ? row.value : defaultValue;
+  } catch (_) {
+    return defaultValue;
+  }
+}
+
+export async function setSetting(key, value) {
+  const strValue = String(value);
+  await query.run(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, strValue]
+  );
+}
+
+export async function getAllSettings() {
+  try {
+    const rows = await query.all('SELECT key, value FROM settings');
+    const result = {};
+    for (const r of rows) {
+      result[r.key] = r.value;
+    }
+    return result;
+  } catch (_) {
+    return {};
+  }
+}
+
 export async function initDatabase() {
   // 1. Orders table
   await query.run(`
@@ -90,4 +121,4 @@ export async function initDatabase() {
   console.log('[DB] SQLite database initialized at:', dbPath);
 }
 
-export default { query, initDatabase };
+export default { query, initDatabase, getSetting, setSetting, getAllSettings };
