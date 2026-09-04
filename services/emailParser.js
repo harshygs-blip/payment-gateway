@@ -68,8 +68,9 @@ export function parsePaymentEmail(subject = '', body = '', date = new Date()) {
 
   // 4. Sender Extraction
   let sender = 'Unknown';
-  const nameMatch = text.match(/from\s+([A-Za-z\s]{2,40}?)(?:\s*\(|\s*Transaction\s*ID|\s*Txn\s*ID|\s*\bDate\b|\s*UTR|\s*Updated|$)/i);
-  const upiIdMatch = text.match(/(?:from|\()\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)/i);
+  const nameMatch = text.match(/from\s+([A-Za-z\s]{2,40}?)(?:\s+at\s+\d{1,2}:\d{2}|\s*\(|\s*Transaction\s*ID|\s*Txn\s*ID|\s*\bDate\b|\s*UTR|\s*Updated|$)/i) ||
+                    text.match(/paid\s+(?:₹|Rs\.?|INR|\d+[\d.,]*)\s+to\s+([A-Za-z\s]{2,40}?)(?:\s+at\s+\d{1,2}:\d{2}|\s*\(|\s*Transaction\s*ID|\s*Txn\s*ID|\s*\bDate\b|\s*UTR|$)/i);
+  const upiIdMatch = text.match(/(?:from|to|\()\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)/i);
 
   if (nameMatch && nameMatch[1] && nameMatch[1].trim().length >= 2) {
     const candidate = nameMatch[1].trim();

@@ -88,6 +88,9 @@
       <button class="tab-btn" id="tabBtnApiKey" onclick="switchTab('apiKey')">
         🔑 API Keys & Integration
       </button>
+      <button class="tab-btn" id="tabBtnLogs" onclick="switchTab('logs')">
+        📝 Request Notes & Live Activity
+      </button>
     </div>
 
     <!-- ==================== TAB 1: LIVE DASHBOARD ==================== -->
@@ -240,6 +243,24 @@
 
         </div>
 
+      </div>
+
+      <!-- Live Request Activity Notes Card -->
+      <div class="panel-card" style="margin-top: 24px; border-top: 2px solid #38bdf8;">
+        <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span>⚡ Live Request Notes (DealsByShiv Integration)</span>
+            <span class="badge PAID" style="font-size: 10px;">Allowed: https://dealsbyshiv.web.app</span>
+          </span>
+          <button class="btn btn-secondary" onclick="switchTab('logs')" style="padding: 3px 10px; font-size: 11px;">
+            View All Notes ↗
+          </button>
+        </div>
+        <div id="dashboardMiniLogsFeed" style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto;">
+          <div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 15px;">
+            Waiting for requests from https://dealsbyshiv.web.app...
+          </div>
+        </div>
       </div>
 
     </div>
@@ -643,6 +664,57 @@
 
       </div>
 
+    </div>
+
+    <!-- ==================== TAB 5: REQUEST NOTES & API ACTIVITY ==================== -->
+    <div class="tab-content" id="tabContentLogs">
+      <div class="panel-card" style="border-top: 3px solid #38bdf8; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <div style="font-size: 17px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <span>📝 External Website Request Notes & Activity Logs</span>
+              <span class="badge PAID" style="font-size: 11px;">Allowed: https://dealsbyshiv.web.app</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+              Live tracking of all order creations, webhook dispatches, payment auto-matches, and security events from your external store.
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="loadApiLogs()" style="font-size: 12px; padding: 6px 14px;">
+              🔄 Refresh Notes
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Table Card -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>📜 Incoming Requests & Event Notes</span>
+          <span style="font-size: 11px; color: var(--text-dim);" id="apiLogsCount">0 entries</span>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th style="width: 140px;">Time</th>
+                <th style="width: 110px;">Status</th>
+                <th style="width: 160px;">Event</th>
+                <th>Title & Note Details</th>
+                <th style="width: 200px;">Origin / IP</th>
+              </tr>
+            </thead>
+            <tbody id="apiLogsTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 30px;">
+                  Loading activity logs...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
   <!-- Modal: Create Order -->

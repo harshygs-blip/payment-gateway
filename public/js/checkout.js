@@ -87,18 +87,29 @@ function renderOrder(order) {
   // Set dynamic QR code image source
   qrImage.src = `/api/qr?data=${encodeURIComponent(order.upiUri)}`;
 
-  // Mobile Intent Links
+  // Mobile Intent Links — corrected deep-link schemes per each app's actual handler
+  const upiParams = order.upiUri.replace(/^upi:\/\/pay\?/, '');
   btnPayDirect.href = order.upiUri;
-  btnGPay.href = order.upiUri.replace('upi://', 'gpay://upi/');
-  btnPhonePe.href = order.upiUri.replace('upi://', 'phonepe://');
-  btnPaytm.href = order.upiUri.replace('upi://', 'paytmmp://');
+
+  // GPay: tez://upi/pay? is the correct scheme (not gpay://)
+  btnGPay.href = `tez://upi/pay?${upiParams}`;
+
+  // PhonePe: phonepe://pay? is correct (not phonepe://upi)
+  btnPhonePe.href = `phonepe://pay?${upiParams}`;
+
+  // Paytm: use Android intent for reliability (paytmmp:// is not consistent)
+  const isAndroid = /android/i.test(navigator.userAgent);
+  if (isAndroid) {
+    btnPaytm.href = `intent://pay?${upiParams}#Intent;scheme=upi;package=net.one97.paytm;end`;
+  } else {
+    btnPaytm.href = `paytmmp://pay?${upiParams}`;
+  }
+
   btnFamPay.href = order.upiUri; // FamPay registers standard upi:// scheme
 
   if (btnNavi) {
-    const isAndroid = /android/i.test(navigator.userAgent);
     if (isAndroid) {
-      const rawParams = order.upiUri.replace(/^upi:\/\/pay\?/, '');
-      btnNavi.href = `intent://pay?${rawParams}#Intent;scheme=upi;package=com.naviapp;end`;
+      btnNavi.href = `intent://pay?${upiParams}#Intent;scheme=upi;package=com.naviapp;end`;
     } else {
       btnNavi.href = order.upiUri;
     }

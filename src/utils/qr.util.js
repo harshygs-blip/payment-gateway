@@ -4,12 +4,18 @@ import QRCode from 'qrcode';
  * Construct standard NPCI UPI Intent URI
  */
 export function buildUpiUri({ vpa, merchantName, amount, orderCode, note }) {
-  const cleanVpa = encodeURIComponent(vpa.trim());
+  // IMPORTANT: VPA (pa=) must NOT be encodeURIComponent'd
+  // The @ symbol MUST remain as @ — Paytm, GPay, PhonePe etc. all reject %40
+  // Only pn= (name) and tn= (note) should be percent-encoded per NPCI spec
+  const cleanVpa = vpa.trim();
   const cleanName = encodeURIComponent(merchantName.trim());
   const cleanAmount = Number(amount).toFixed(2);
-  const cleanNote = encodeURIComponent(note || `Order ${orderCode}`);
+  const cleanNote = encodeURIComponent(note || `Pay ${orderCode}`);
+  // tr= transaction reference helps UPI apps track + reconcile payments
+  const txnRef = encodeURIComponent(orderCode || `TXN${Date.now()}`);
 
-  return `upi://pay?pa=${cleanVpa}&pn=${cleanName}&am=${cleanAmount}&cu=INR&tn=${cleanNote}`;
+  // mode=00 = default pay mode (required by some strict UPI apps like Paytm)
+  return `upi://pay?pa=${cleanVpa}&pn=${cleanName}&am=${cleanAmount}&tr=${txnRef}&tn=${cleanNote}&cu=INR&mode=00`;
 }
 
 /**

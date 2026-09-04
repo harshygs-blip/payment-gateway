@@ -2,6 +2,7 @@ import { OrderModel } from '../models/order.model.js';
 import { claimOrderWithUtr } from '../services/matchingEngine.service.js';
 import { buildUpiUri, streamQrPng } from '../utils/qr.util.js';
 import { config } from '../../config.js';
+import { logActivity } from '../../db/database.js';
 
 function generateOrderCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -15,10 +16,20 @@ function generateOrderCode() {
 export const OrderController = {
   async create(req, res, next) {
     try {
+      const origin = req.headers.origin || req.headers.referer || '';
+      const clientIp = req.ip || req.connection?.remoteAddress || '';
       const { amount, customerName = 'Guest', customerPhone = '', webhookUrl = '' } = req.body;
       const parsedAmount = parseFloat(amount);
 
       if (!parsedAmount || isNaN(parsedAmount) || parsedAmount <= 0) {
+        await logActivity({
+          eventType: 'ORDER_CREATE_FAILED',
+          status: 'FAILED',
+          title: 'Order Creation Failed: Invalid Amount',
+          details: `Received amount: "${amount}"`,
+          clientIp,
+          origin
+        });
         return res.status(400).json({ success: false, error: 'Valid positive amount is required' });
       }
 
@@ -50,8 +61,25 @@ export const OrderController = {
         checkoutUrl: `/checkout/${orderCode}`
       };
 
+      await logActivity({
+        eventType: 'ORDER_CREATED',
+        status: 'SUCCESS',
+        title: `Order Created: ${orderCode}`,
+        details: `Amount: ₹${parsedAmount.toFixed(2)} | Customer: ${customerName} | Webhook: ${webhookUrl || 'None'}`,
+        clientIp,
+        origin
+      });
+
       if (req.io) {
         req.io.to('admin_room').emit('new_order', orderData);
+        req.io.to('admin_room').emit('api_log', {
+          event_type: 'ORDER_CREATED',
+          status: 'SUCCESS',
+          title: `Order Created: ${orderCode}`,
+          details: `₹${parsedAmount.toFixed(2)} from ${origin || 'Client'}`,
+          origin,
+          created_at: createdAt
+        });
       }
 
       return res.status(201).json({ success: true, order: orderData });

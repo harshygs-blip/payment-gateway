@@ -183,16 +183,22 @@ function switchTab(tab) {
   document.getElementById('tabBtnLedger').classList.toggle('active', tab === 'ledger');
   document.getElementById('tabBtnConfig').classList.toggle('active', tab === 'config');
   document.getElementById('tabBtnApiKey').classList.toggle('active', tab === 'apiKey');
+  const btnLogs = document.getElementById('tabBtnLogs');
+  if (btnLogs) btnLogs.classList.toggle('active', tab === 'logs');
 
   document.getElementById('tabContentDashboard').classList.toggle('active', tab === 'dashboard');
   document.getElementById('tabContentLedger').classList.toggle('active', tab === 'ledger');
   document.getElementById('tabContentConfig').classList.toggle('active', tab === 'config');
   document.getElementById('tabContentApiKey').classList.toggle('active', tab === 'apiKey');
+  const contentLogs = document.getElementById('tabContentLogs');
+  if (contentLogs) contentLogs.classList.toggle('active', tab === 'logs');
 
   if (tab === 'ledger') {
     loadLedger();
   } else if (tab === 'apiKey') {
     loadApiKeyDetails();
+  } else if (tab === 'logs') {
+    loadApiLogs();
   }
 }
 window.switchTab = switchTab;
@@ -826,6 +832,7 @@ function initSocket() {
   socket.on('new_order', () => {
     loadStats();
     loadOrders(currentFilter);
+    loadApiLogs();
   });
 
   socket.on('payment_event', () => {
@@ -833,16 +840,118 @@ function initSocket() {
     loadOrders(currentFilter);
     loadPayments();
     loadLedger();
+    loadApiLogs();
   });
 
   socket.on('order_expired', () => {
     loadStats();
     loadOrders(currentFilter);
+    loadApiLogs();
   });
 
   socket.on('imap_status', (status) => {
     updateImapPill(status);
   });
+
+  socket.on('api_log', () => {
+    loadApiLogs();
+  });
+}
+
+// 10b. Load & Render Request Notes & API Logs
+async function loadApiLogs() {
+  try {
+    const res = await fetch('/api/admin/logs?limit=50');
+    const data = await res.json();
+    if (!data.success) return;
+    renderApiLogs(data.logs);
+  } catch (err) {
+    console.error('Failed to load api logs:', err);
+  }
+}
+window.loadApiLogs = loadApiLogs;
+
+function renderApiLogs(logs) {
+  const tableBody = document.getElementById('apiLogsTableBody');
+  const countSpan = document.getElementById('apiLogsCount');
+  const miniFeed = document.getElementById('dashboardMiniLogsFeed');
+
+  if (countSpan) countSpan.innerText = `${logs.length} entries`;
+
+  // Render main logs table
+  if (tableBody) {
+    if (!logs || logs.length === 0) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 30px;">
+            No requests or activity recorded yet. Requests from https://dealsbyshiv.web.app will show up here live!
+          </td>
+        </tr>
+      `;
+    } else {
+      tableBody.innerHTML = logs.map(l => {
+        const isSuccess = l.status === 'SUCCESS';
+        const isFailed = l.status === 'FAILED';
+        const badgeClass = isSuccess ? 'PAID' : (isFailed ? 'EXPIRED' : 'PENDING');
+        const timeStr = new Date(l.created_at).toLocaleTimeString();
+        const dateStr = new Date(l.created_at).toLocaleDateString();
+
+        return `
+          <tr>
+            <td style="font-size: 11.5px; color: var(--text-muted); font-family: 'JetBrains Mono';">
+              <div>${timeStr}</div>
+              <div style="font-size: 10px; color: var(--text-dim);">${dateStr}</div>
+            </td>
+            <td><span class="badge ${badgeClass}">${l.status}</span></td>
+            <td><span style="font-size: 11px; font-weight: 600; color: var(--primary);">${l.event_type}</span></td>
+            <td>
+              <div style="font-weight: 600; font-size: 13px; color: #fff;">${escapeHtml(l.title)}</div>
+              <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">${escapeHtml(l.details || '')}</div>
+            </td>
+            <td style="font-size: 11px; color: var(--text-dim); font-family: 'JetBrains Mono';">
+              <div style="color: var(--primary);">${escapeHtml(l.origin || 'Direct')}</div>
+              <div style="font-size: 10px;">${escapeHtml(l.client_ip || '')}</div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // Render Dashboard Mini Feed
+  if (miniFeed) {
+    if (!logs || logs.length === 0) {
+      miniFeed.innerHTML = `
+        <div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 15px;">
+          Waiting for requests from https://dealsbyshiv.web.app...
+        </div>
+      `;
+    } else {
+      miniFeed.innerHTML = logs.slice(0, 6).map(l => {
+        const isSuccess = l.status === 'SUCCESS';
+        const badgeColor = isSuccess ? 'var(--accent-green)' : (l.status === 'FAILED' ? 'var(--accent-red)' : 'var(--accent-amber)');
+        return `
+          <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-card); border-radius: var(--radius-sm); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${badgeColor}; flex-shrink: 0;"></span>
+              <div style="min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(l.title)}</div>
+                <div style="font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(l.details || '')}</div>
+              </div>
+            </div>
+            <div style="text-align: right; flex-shrink: 0;">
+              <span style="font-size: 10px; color: var(--text-dim);">${new Date(l.created_at).toLocaleTimeString()}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
 }
 
 // 11. Load Financial Ledger (Hisab-Kitab)
@@ -1285,6 +1394,7 @@ function initDashboardData() {
   loadPayments();
   loadLedger();
   loadApiKeyDetails();
+  loadApiLogs();
   initSocket();
 }
 

@@ -1,4 +1,4 @@
-import { query } from '../db/database.js';
+import { query, logActivity } from '../db/database.js';
 
 let ioInstance = null;
 
@@ -38,21 +38,49 @@ export async function processIncomingPayment({
     };
   }
 
-  // 2. Time-Window Search: Find oldest active pending order matching this amount
-  // Tolerance: 60 seconds clock skew tolerance before order created_at, and 60 seconds after expires_at
-  const clockSkewToleranceMs = 60 * 1000;
-  const now = Date.now();
-
-  const matchingOrder = await query.get(
+  // 2. Matching Strategy:
+  // Step A: Check if any active/recent order was already claimed with this exact UTR or order code
+  let matchingOrder = await query.get(
     `SELECT * FROM orders 
-     WHERE status = 'PENDING'
+     WHERE (utr = ? OR (LENGTH(?) > 4 AND instr(?, order_code) > 0))
+       AND status != 'PAID'
        AND ROUND(amount, 2) = ROUND(?, 2)
-       AND (created_at - ?) <= ?
-       AND (expires_at + ?) >= ?
-     ORDER BY created_at ASC 
+     ORDER BY created_at DESC 
      LIMIT 1`,
-    [amount, clockSkewToleranceMs, receivedTimestamp, clockSkewToleranceMs, receivedTimestamp]
+    [utr, rawSnippet, rawSnippet, amount]
   );
+
+  // Step B: Time-Window Search for active pending orders matching this amount
+  const clockSkewToleranceMs = 90 * 1000; // 90 seconds clock skew tolerance
+  if (!matchingOrder) {
+    matchingOrder = await query.get(
+      `SELECT * FROM orders 
+       WHERE status = 'PENDING'
+         AND ROUND(amount, 2) = ROUND(?, 2)
+         AND (created_at - ?) <= ?
+         AND (expires_at + ?) >= ?
+       ORDER BY created_at ASC 
+       LIMIT 1`,
+      [amount, clockSkewToleranceMs, receivedTimestamp, clockSkewToleranceMs, receivedTimestamp]
+    );
+  }
+
+  // Step C: Grace Period for recently expired orders (within 30 minutes of creation)
+  if (!matchingOrder) {
+    const gracePeriodMs = 30 * 60 * 1000;
+    matchingOrder = await query.get(
+      `SELECT * FROM orders 
+       WHERE status = 'EXPIRED'
+         AND ROUND(amount, 2) = ROUND(?, 2)
+         AND (? - created_at) <= ?
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [amount, receivedTimestamp, gracePeriodMs]
+    );
+    if (matchingOrder) {
+      console.log(`[MatchingEngine] Auto-revived expired order ${matchingOrder.order_code} for payment!`);
+    }
+  }
 
   if (matchingOrder) {
     console.log(`[MatchingEngine] Match found! Order: ${matchingOrder.order_code} for ₹${amount}`);
@@ -80,6 +108,16 @@ export async function processIncomingPayment({
       sender_info: sender
     };
 
+    // Log Activity
+    const orderOrigin = matchingOrder.webhook_url ? (matchingOrder.webhook_url.startsWith('http') ? new URL(matchingOrder.webhook_url).origin : '') : '';
+    await logActivity({
+      eventType: 'ORDER_PAID',
+      status: 'SUCCESS',
+      title: `Order Paid: ${matchingOrder.order_code}`,
+      details: `₹${amount} auto-matched via ${source}. UTR: ${utr}, Sender: ${sender}.`,
+      origin: orderOrigin
+    });
+
     // Real-time notification via WebSockets
     if (ioInstance) {
       // Notify checkout room
@@ -97,6 +135,15 @@ export async function processIncomingPayment({
         type: 'ORDER_PAID',
         order: updatedOrder,
         paymentId: paymentResult.lastID
+      });
+
+      ioInstance.to('admin_room').emit('api_log', {
+        event_type: 'ORDER_PAID',
+        status: 'SUCCESS',
+        title: `Order Paid: ${matchingOrder.order_code}`,
+        details: `₹${amount} auto-matched via ${source}. UTR: ${utr}`,
+        origin: orderOrigin,
+        created_at: Date.now()
       });
     }
 
@@ -121,6 +168,13 @@ export async function processIncomingPayment({
       [utr, amount, sender, receivedTimestamp, source, rawSnippet]
     );
 
+    await logActivity({
+      eventType: 'UNMATCHED_PAYMENT',
+      status: 'WARNING',
+      title: `Unmatched Payment: ₹${amount}`,
+      details: `Received ₹${amount} (UTR: ${utr}) from ${sender}. No matching order open.`
+    });
+
     if (ioInstance) {
       ioInstance.to('admin_room').emit('payment_event', {
         type: 'UNMATCHED_PAYMENT',
@@ -132,6 +186,13 @@ export async function processIncomingPayment({
           received_at: receivedTimestamp,
           source
         }
+      });
+      ioInstance.to('admin_room').emit('api_log', {
+        event_type: 'UNMATCHED_PAYMENT',
+        status: 'WARNING',
+        title: `Unmatched Payment: ₹${amount}`,
+        details: `UTR: ${utr} (${sender})`,
+        created_at: Date.now()
       });
     }
 
@@ -215,28 +276,90 @@ export async function claimOrderWithUtr(orderCode, submittedUtr) {
 /**
  * Asynchronous Webhook Dispatcher
  */
-async function triggerWebhook(webhookUrl, orderData) {
+export async function triggerWebhook(webhookUrl, orderData, eventType = 'payment.success') {
+  if (!webhookUrl) return;
+  const origin = webhookUrl.startsWith('http') ? new URL(webhookUrl).origin : webhookUrl;
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const payload = {
+      event: eventType,
+      timestamp: Date.now(),
+      data: {
+        orderCode: orderData.order_code,
+        amount: orderData.amount,
+        status: orderData.status || (eventType === 'payment.success' ? 'PAID' : (eventType === 'order.expired' ? 'EXPIRED' : 'FAILED')),
+        utr: orderData.utr || null,
+        sender: orderData.sender_info || null,
+        paidAt: orderData.paid_at || null,
+        failureReason: orderData.failure_reason || null
+      }
+    };
+
     const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event: 'payment.success',
-        data: {
-          orderCode: orderData.order_code,
-          amount: orderData.amount,
-          utr: orderData.utr,
-          sender: orderData.sender_info,
-          paidAt: orderData.paid_at
-        }
-      })
+      headers: { 
+        'Content-Type': 'application/json',
+        'User-Agent': 'Personal-UPI-Gateway-Webhook/1.0'
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+
     const status = response.ok ? 'SUCCESS' : 'FAILED';
-    await query.run('UPDATE orders SET webhook_status = ? WHERE id = ?', [status, orderData.id]);
+    if (orderData.id) {
+      await query.run('UPDATE orders SET webhook_status = ? WHERE id = ?', [status, orderData.id]);
+    }
+
+    await logActivity({
+      eventType: 'WEBHOOK_DISPATCH',
+      status: response.ok ? 'SUCCESS' : 'FAILED',
+      title: `Webhook Dispatched: ${eventType} (${status})`,
+      details: `Event "${eventType}" for ${orderData.order_code} (₹${orderData.amount}) dispatched to ${webhookUrl}. HTTP Status: ${response.status}`,
+      origin
+    });
+
+    if (ioInstance) {
+      ioInstance.to('admin_room').emit('api_log', {
+        event_type: 'WEBHOOK_DISPATCH',
+        status: response.ok ? 'SUCCESS' : 'FAILED',
+        title: `Webhook ${eventType} -> ${status}`,
+        details: `${orderData.order_code} -> ${webhookUrl}`,
+        origin,
+        created_at: Date.now()
+      });
+    }
+
+    return { success: response.ok, status: response.status };
   } catch (err) {
-    console.error(`[Webhook] Failed to dispatch to ${webhookUrl}:`, err.message);
-    await query.run('UPDATE orders SET webhook_status = ? WHERE id = ?', ['FAILED', orderData.id]);
+    console.error(`[Webhook] Failed to dispatch ${eventType} to ${webhookUrl}:`, err.message);
+    if (orderData.id) {
+      await query.run('UPDATE orders SET webhook_status = ? WHERE id = ?', ['FAILED', orderData.id]);
+    }
+
+    await logActivity({
+      eventType: 'WEBHOOK_DISPATCH',
+      status: 'FAILED',
+      title: `Webhook Dispatch Failed: ${eventType}`,
+      details: `Failed to deliver ${eventType} for ${orderData.order_code} to ${webhookUrl}: ${err.message}`,
+      origin
+    });
+
+    if (ioInstance) {
+      ioInstance.to('admin_room').emit('api_log', {
+        event_type: 'WEBHOOK_DISPATCH',
+        status: 'FAILED',
+        title: `Webhook ${eventType} Failed`,
+        details: `${orderData.order_code} -> ${webhookUrl}: ${err.message}`,
+        origin,
+        created_at: Date.now()
+      });
+    }
+
+    return { success: false, error: err.message };
   }
 }
 
-export default { processIncomingPayment, claimOrderWithUtr, setSocketIO };
+export default { processIncomingPayment, claimOrderWithUtr, setSocketIO, triggerWebhook };

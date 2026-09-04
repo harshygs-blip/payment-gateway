@@ -26,7 +26,11 @@ export const OrderModel = {
   },
 
   async markAsExpired(id) {
-    return query.run(`UPDATE orders SET status = 'EXPIRED' WHERE id = ?`, [id]);
+    return query.run(`UPDATE orders SET status = 'EXPIRED', failure_reason = 'PAYMENT_EXPIRED' WHERE id = ?`, [id]);
+  },
+
+  async markAsFailed(id, reason = 'PAYMENT_FAILED') {
+    return query.run(`UPDATE orders SET status = 'FAILED', failure_reason = ? WHERE id = ?`, [reason, id]);
   },
 
   async setSubmittedUtr(id, utr) {
@@ -58,7 +62,7 @@ export const OrderModel = {
   },
 
   async findExpiredPending(now = Date.now()) {
-    return query.all('SELECT id, order_code FROM orders WHERE status = "PENDING" AND expires_at < ?', [now]);
+    return query.all('SELECT id, order_code, amount, webhook_url FROM orders WHERE status = "PENDING" AND expires_at < ?', [now]);
   },
 
   async updateWebhookStatus(id, status) {

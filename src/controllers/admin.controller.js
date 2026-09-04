@@ -4,6 +4,7 @@ import { SettingModel } from '../models/setting.model.js';
 import { processIncomingPayment } from '../services/matchingEngine.service.js';
 import { getImapStatus } from '../services/imapListener.service.js';
 import { config } from '../../config.js';
+import { getRecentApiLogs } from '../../db/database.js';
 
 export const AdminController = {
   async getStats(req, res, next) {
@@ -25,9 +26,20 @@ export const AdminController = {
           expiryMinutes: config.orderExpiryMinutes,
           imapUser: config.imap.user || '',
           hasImapPass: Boolean(config.imap.pass),
-          imapFilter: config.imap.senderFilter.join(', ')
+          imapFilter: config.imap.senderFilter.join(', '),
+          allowedOrigins: config.allowedOrigins || []
         }
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getLogs(req, res, next) {
+    try {
+      const limit = parseInt(req.query.limit || 50, 10);
+      const logs = await getRecentApiLogs(limit);
+      return res.json({ success: true, logs });
     } catch (err) {
       next(err);
     }

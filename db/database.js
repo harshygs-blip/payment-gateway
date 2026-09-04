@@ -90,9 +90,17 @@ export async function initDatabase() {
       utr TEXT,
       sender_info TEXT,
       webhook_url TEXT,
-      webhook_status TEXT
+      webhook_status TEXT,
+      failure_reason TEXT
     )
   `);
+
+  // Migrate existing orders table to include failure_reason if missing
+  try {
+    await query.run('ALTER TABLE orders ADD COLUMN failure_reason TEXT');
+  } catch (_) {
+    // Column already exists
+  }
 
   // 2. Payments table
   await query.run(`
@@ -118,7 +126,45 @@ export async function initDatabase() {
     )
   `);
 
+  // 4. API & Activity Notes table
+  await query.run(`
+    CREATE TABLE IF NOT EXISTS api_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT,
+      client_ip TEXT,
+      origin TEXT,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   console.log('[DB] SQLite database initialized at:', dbPath);
+}
+
+export async function logActivity({ eventType, status = 'INFO', title, details = '', clientIp = '', origin = '' }) {
+  try {
+    const now = Date.now();
+    const res = await query.run(
+      `INSERT INTO api_logs (event_type, status, title, details, client_ip, origin, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [eventType, status, title, details, clientIp, origin, now]
+    );
+    return { id: res.lastID, event_type: eventType, status, title, details, client_ip: clientIp, origin, created_at: now };
+  } catch (err) {
+    console.error('[DB] Failed to log activity:', err.message);
+    return null;
+  }
+}
+
+export async function getRecentApiLogs(limit = 50) {
+  try {
+    return await query.all('SELECT * FROM api_logs ORDER BY id DESC LIMIT ?', [limit]);
+  } catch (err) {
+    console.error('[DB] Failed to fetch api_logs:', err.message);
+    return [];
+  }
 }
 
 export function closeDatabase() {
@@ -130,4 +176,4 @@ export function closeDatabase() {
   });
 }
 
-export default { query, initDatabase, closeDatabase, getSetting, setSetting, getAllSettings };
+export default { query, initDatabase, closeDatabase, getSetting, setSetting, getAllSettings, logActivity, getRecentApiLogs };

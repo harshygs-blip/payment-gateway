@@ -1,13 +1,15 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { config } from '../config.js';
-import { query } from '../db/database.js';
+import { query, logActivity } from '../db/database.js';
 import { parsePaymentEmail } from './emailParser.js';
 import { processIncomingPayment } from './matchingEngine.js';
 
 let client = null;
 let isRunning = false;
 let globalIo = null;
+let activeMailboxLock = null;
+let keepAliveTimer = null;
 
 let statusInfo = {
   enabled: config.imap.enabled,
@@ -294,9 +296,18 @@ export async function startImapListener(io = null) {
   isRunning = true;
 
   try {
-    // Disconnect old client if exists
+    // Disconnect old client & timer if exists
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
+    if (activeMailboxLock) {
+      try { activeMailboxLock.release(); } catch (_) {}
+      activeMailboxLock = null;
+    }
     if (client) {
       try { await client.logout(); } catch (_) {}
+      client = null;
     }
 
     client = new ImapFlow({
@@ -334,30 +345,63 @@ export async function startImapListener(io = null) {
     statusInfo.lastError = null;
     console.log('[IMAP] Successfully authenticated with IMAP!');
 
-    const lock = await client.getMailboxLock(config.imap.mailbox);
-    try {
-      statusInfo.listening = true;
+    activeMailboxLock = await client.getMailboxLock(config.imap.mailbox);
+    statusInfo.listening = true;
+    statusInfo.lastCheckedAt = Date.now();
+    if (globalIo) globalIo.to('admin_room').emit('imap_status', getImapStatus());
+
+    await logActivity({
+      eventType: 'IMAP_ACTIVE',
+      status: 'SUCCESS',
+      title: 'Gmail IMAP Listener Active',
+      details: `Live push active for ${user} on mailbox ${config.imap.mailbox}.`
+    });
+
+    console.log(`[IMAP IDLE] Listening for new payment emails in ${config.imap.mailbox}...`);
+
+    client.on('exists', async (data) => {
+      console.log(`[IMAP] New email detected! Total inbox count: ${data.count}`);
       statusInfo.lastCheckedAt = Date.now();
-      if (globalIo) globalIo.to('admin_room').emit('imap_status', getImapStatus());
+      await fetchAndProcessLatestMessage(client, globalIo);
+    });
 
-      console.log(`[IMAP IDLE] Listening for new payment emails in ${config.imap.mailbox}...`);
+    // Start 4-minute keepalive ping to maintain active socket connection
+    keepAliveTimer = setInterval(async () => {
+      if (client && client.usable && isRunning) {
+        try {
+          await client.noop();
+        } catch (e) {
+          console.warn('[IMAP Keepalive Ping Notice]:', e.message);
+        }
+      }
+    }, 4 * 60 * 1000);
 
-      client.on('exists', async (data) => {
-        console.log(`[IMAP] New email detected! Total inbox count: ${data.count}`);
-        statusInfo.lastCheckedAt = Date.now();
-        await fetchAndProcessLatestMessage(client, globalIo);
-      });
+    // Run IDLE in background loop so this function returns immediately
+    (async () => {
+      while (isRunning && client && client.usable) {
+        try {
+          await client.idle();
+        } catch (idleErr) {
+          console.warn('[IMAP IDLE Loop Notice]:', idleErr.message);
+          break;
+        }
+      }
+    })().catch(err => {
+      console.error('[IMAP Background Idle Error]:', err.message);
+    });
 
-      await client.idle();
-    } finally {
-      lock.release();
-    }
   } catch (err) {
     console.error('[IMAP Start Failed]:', err.message);
     statusInfo.connected = false;
     statusInfo.listening = false;
     statusInfo.lastError = err.message;
     if (globalIo) globalIo.to('admin_room').emit('imap_status', getImapStatus());
+    await logActivity({
+      eventType: 'IMAP_ERROR',
+      status: 'FAILED',
+      title: 'IMAP Connection Error',
+      details: err.message
+    });
   }
 }
 
@@ -391,6 +435,13 @@ async function fetchAndProcessLatestMessage(imapClient, io) {
       console.log(`[IMAP] ✅ Payment Extracted: ₹${paymentData.amount}, UTR: ${paymentData.utr}`);
       statusInfo.processedCount++;
 
+      await logActivity({
+        eventType: 'PAYMENT_RECEIVED',
+        status: 'SUCCESS',
+        title: `Payment Detected: ₹${paymentData.amount}`,
+        details: `Extracted from email. Ref/UTR: ${paymentData.utr}, Sender: ${paymentData.sender || fromAddress}`
+      });
+
       await processIncomingPayment({
         amount: paymentData.amount,
         utr: paymentData.utr,
@@ -407,14 +458,23 @@ async function fetchAndProcessLatestMessage(imapClient, io) {
   }
 }
 
-export async function stopImapListener() {
+export async function stopImapListener(disablePermanently = false) {
   isRunning = false;
-  config.imap.enabled = false;
+  if (disablePermanently) {
+    config.imap.enabled = false;
+  }
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+  if (activeMailboxLock) {
+    try { activeMailboxLock.release(); } catch (_) {}
+    activeMailboxLock = null;
+  }
   if (client) {
     try { await client.logout(); } catch (_) {}
     client = null;
   }
-  statusInfo.enabled = false;
   statusInfo.connected = false;
   statusInfo.listening = false;
   if (globalIo) globalIo.to('admin_room').emit('imap_status', getImapStatus());
@@ -432,7 +492,7 @@ export async function restartImapListener(newConfig = null, io = null) {
     }
   }
 
-  await stopImapListener();
+  await stopImapListener(false);
   if (config.imap.enabled) {
     await startImapListener(io || globalIo);
   }

@@ -28,5 +28,10 @@ export const config = {
   auth: {
     apiKey: process.env.API_KEY || '',
     requireApiKey: process.env.REQUIRE_API_KEY === 'true'
-  }
+  },
+
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://dealsbyshiv.web.app,http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000')
+    .split(',')
+    .map(s => s.trim().replace(/\/+$/, ''))
+    .filter(Boolean)
 };

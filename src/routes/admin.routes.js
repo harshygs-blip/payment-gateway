@@ -36,6 +36,7 @@ router.post('/auth/change-master-key', async (req, res) => {
 router.get('/stats', AdminController.getStats);
 router.get('/orders', AdminController.getOrders);
 router.get('/payments', AdminController.getPayments);
+router.get('/logs', AdminController.getLogs);
 router.post('/simulate-payment', AdminController.simulatePayment);
 router.post('/settings', AdminController.updateSettings);
 

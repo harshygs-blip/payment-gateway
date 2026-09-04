@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import apiRouter from './routes/index.js';
 import { requestLogger } from './middlewares/requestLogger.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
+import { config } from '../config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,8 +15,41 @@ const publicDir = path.join(__dirname, '..', 'public');
 export function createApp(io = null) {
   const app = express();
 
+  // Allowed Origins Configuration
+  const allowedOrigins = config.allowedOrigins || [
+    'https://dealsbyshiv.web.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000'
+  ];
+
+  const corsOptions = {
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like curl, Postman, server-to-server webhooks)
+      if (!origin) return callback(null, true);
+
+      const normalized = origin.trim().replace(/\/+$/, '');
+      const isAllowed = allowedOrigins.some(allowed => {
+        const cleanAllowed = allowed.trim().replace(/\/+$/, '');
+        return cleanAllowed === '*' || normalized === cleanAllowed;
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`);
+        callback(new Error(`CORS blocked for origin: ${origin}. Only authorized domains are permitted.`));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'X-Requested-With', 'Accept']
+  };
+
   // Core Middlewares
-  app.use(cors());
+  app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(requestLogger);
@@ -48,13 +82,21 @@ export function createApp(io = null) {
     res.sendFile(path.join(publicDir, 'admin.html'));
   });
 
+  app.get('/docs', (req, res) => {
+    res.sendFile(path.join(publicDir, 'docs.html'));
+  });
+
+  app.get('/how-to-implement', (req, res) => {
+    res.sendFile(path.join(publicDir, 'docs.html'));
+  });
+
   app.get('/', (req, res) => {
     res.redirect('/admin');
   });
 
-  // Global Error Handling
-  app.use(errorHandler);
+  // Global Error Handling (404 catch-all then centralized error handler)
   app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }

@@ -1,5 +1,6 @@
 import { config } from '../../config.js';
 import logger from '../utils/logger.js';
+import { logActivity } from '../../db/database.js';
 
 /**
  * Middleware to authenticate merchant requests using an API Key.
@@ -14,6 +15,9 @@ export function apiKeyAuth(req, res, next) {
     req.apiKeyAuthenticated = false;
     return next();
   }
+
+  const origin = req.headers.origin || req.headers.referer || '';
+  const clientIp = req.ip || req.connection?.remoteAddress || '';
 
   // Extract key from header or query
   let clientKey = req.headers['x-api-key'] || req.query.api_key || req.query.apiKey;
@@ -31,6 +35,14 @@ export function apiKeyAuth(req, res, next) {
 
   if (!clientKey) {
     logger.warn(`[Auth] Blocked request to ${req.method} ${req.originalUrl}: Missing API Key`);
+    logActivity({
+      eventType: 'API_AUTH_FAILED',
+      status: 'FAILED',
+      title: 'API Authentication Rejected: Missing Key',
+      details: `Request to ${req.method} ${req.originalUrl} rejected because no API Key was provided.`,
+      clientIp,
+      origin
+    });
     return res.status(401).json({
       success: false,
       error: "Unauthorized: Missing API Key. Provide your API Key in the 'x-api-key' header or 'Authorization: Bearer <key>'."
@@ -39,6 +51,14 @@ export function apiKeyAuth(req, res, next) {
 
   if (clientKey !== expectedKey) {
     logger.warn(`[Auth] Blocked request to ${req.method} ${req.originalUrl}: Invalid API Key supplied`);
+    logActivity({
+      eventType: 'API_AUTH_FAILED',
+      status: 'FAILED',
+      title: 'API Authentication Rejected: Invalid Key',
+      details: `Request to ${req.method} ${req.originalUrl} used invalid key "${clientKey.substring(0, 10)}..."`,
+      clientIp,
+      origin
+    });
     return res.status(401).json({
       success: false,
       error: "Unauthorized: Invalid API Key. Please verify your API Key from the Admin Dashboard."
