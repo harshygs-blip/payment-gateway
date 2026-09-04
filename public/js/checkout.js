@@ -84,8 +84,8 @@ function renderOrder(order) {
   orderCodeDisplay.innerText = order.order_code;
   amountDisplay.innerText = `₹ ${Number(order.amount).toFixed(2)}`;
 
-  // Set dynamic QR code image source
-  qrImage.src = `/api/qr?data=${encodeURIComponent(order.upiUri)}`;
+  // Set dynamic QR code image source (instant base64 or stream endpoint)
+  qrImage.src = order.qrDataUrl || `/api/qr?data=${encodeURIComponent(order.upiUri)}`;
 
   // Mobile Intent Links — corrected deep-link schemes per each app's actual handler
   const upiParams = order.upiUri.replace(/^upi:\/\/pay\?/, '');
