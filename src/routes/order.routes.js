@@ -7,7 +7,9 @@ const router = Router();
 // Order creation is protected by API Key
 router.post('/create', apiKeyAuth, OrderController.create);
 
-// Public status check and manual UTR submission for checkout page
+// Public status check and manual UTR submission for checkout page / external website sessions
+router.get('/qr', OrderController.getQrCode);
+router.get('/session/:code', OrderController.getByCode);
 router.get('/:code', OrderController.getByCode);
 router.post('/:code/verify-utr', OrderController.verifyUtr);
 

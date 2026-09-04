@@ -140,6 +140,18 @@ export async function initDatabase() {
     )
   `);
 
+  // Auto-clean any legacy debit/outgoing payments from payments table (strictly count received amounts)
+  try {
+    await query.run(`
+      DELETE FROM payments 
+      WHERE (raw_snippet LIKE '%paid%to%' 
+         OR raw_snippet LIKE '%successfully paid%' 
+         OR raw_snippet LIKE '%debited%'
+         OR raw_snippet LIKE '%sent%to%')
+        AND is_matched = 0
+    `);
+  } catch (_) {}
+
   console.log('[DB] SQLite database initialized at:', dbPath);
 }
 

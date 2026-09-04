@@ -54,11 +54,29 @@ export const OrderController = {
         orderCode
       });
 
+      // Construct absolute base URL (supports reverse proxies like Render, ngrok, Cloudflare)
+      const forwardedProto = req.headers['x-forwarded-proto'];
+      const protocol = forwardedProto ? forwardedProto.split(',')[0].trim() : (req.protocol || 'http');
+      const host = req.headers['x-forwarded-host'] || req.get('host') || `localhost:${config.port}`;
+      const baseUrl = `${protocol}://${host}`;
+      const checkoutUrl = `${baseUrl}/checkout/${orderCode}`;
+
       const orderData = {
         ...order,
+        orderId: order.id,
+        orderCode,
+        amount: parsedAmount,
+        currency: 'INR',
+        status: 'PENDING',
         expiryMinutes: config.orderExpiryMinutes,
+        expiresAt,
         upiUri,
-        checkoutUrl: `/checkout/${orderCode}`
+        checkoutUrl,
+        sessionUrl: checkoutUrl,
+        paymentUrl: checkoutUrl,
+        url: checkoutUrl,
+        relativeCheckoutUrl: `/checkout/${orderCode}`,
+        qrImageUrl: `${baseUrl}/api/orders/qr?data=${encodeURIComponent(upiUri)}`
       };
 
       await logActivity({
@@ -110,11 +128,25 @@ export const OrderController = {
         orderCode: order.order_code
       });
 
+      const forwardedProto = req.headers['x-forwarded-proto'];
+      const protocol = forwardedProto ? forwardedProto.split(',')[0].trim() : (req.protocol || 'http');
+      const host = req.headers['x-forwarded-host'] || req.get('host') || `localhost:${config.port}`;
+      const baseUrl = `${protocol}://${host}`;
+      const checkoutUrl = `${baseUrl}/checkout/${order.order_code}`;
+
       return res.json({
         success: true,
         order: {
           ...order,
+          orderId: order.id,
+          orderCode: order.order_code,
           upiUri,
+          checkoutUrl,
+          sessionUrl: checkoutUrl,
+          paymentUrl: checkoutUrl,
+          url: checkoutUrl,
+          relativeCheckoutUrl: `/checkout/${order.order_code}`,
+          qrImageUrl: `${baseUrl}/api/orders/qr?data=${encodeURIComponent(upiUri)}`,
           timeRemainingSeconds: Math.max(0, Math.floor((order.expires_at - Date.now()) / 1000))
         }
       });

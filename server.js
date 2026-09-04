@@ -40,7 +40,7 @@ async function bootstrap() {
   // 5. Attach Socket.IO to HTTP Server
   io = new Server(server, {
     cors: {
-      origin: config.allowedOrigins || ['https://dealsbyshiv.web.app', 'http://localhost:5173', 'http://localhost:3000'],
+      origin: (origin, callback) => callback(null, true),
       credentials: true
     }
   });

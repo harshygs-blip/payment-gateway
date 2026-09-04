@@ -1286,7 +1286,8 @@ const response = await fetch('${origin}/api/orders/create', {
 const data = await response.json();
 if (data.success) {
   console.log('Order Code:', data.order.orderCode);
-  console.log('Redirect User to:', '${origin}' + data.order.checkoutUrl);
+  console.log('Redirect User to Checkout Session:', data.order.checkoutUrl);
+  console.log('Direct Payment Link:', data.order.paymentUrl);
   console.log('UPI Intent URI:', data.order.upiUri);
 }`;
   } else if (activeSnippetLang === 'python') {
@@ -1309,7 +1310,7 @@ data = response.json()
 
 if data.get("success"):
     print("Order Code:", data["order"]["orderCode"])
-    print("Checkout URL:", "${origin}" + data["order"]["checkoutUrl"])`;
+    print("Checkout URL:", data["order"]["checkoutUrl"])`;
   } else if (activeSnippetLang === 'php') {
     box.innerText = `<?php
 $curl = curl_init();

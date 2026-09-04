@@ -8,10 +8,10 @@ export function parsePaymentEmail(subject = '', body = '', date = new Date()) {
 
   // 1. Preprocess & normalize raw text:
   // FamPay emails often arrive as stripped HTML tables where words are joined without spaces
-  // e.g. "received₹500.0from MEENA KUMARITransaction ID :FMPIB6527256761Date :...UTR :214771578746Purpose"
   const text = rawText
     .replace(/(successfully\s+received|received)/gi, ' $1 ')
-    .replace(/(from)/gi, ' $1 ')
+    .replace(/(successfully\s+paid|paid)/gi, ' $1 ')
+    .replace(/(from|to)\b/gi, ' $1 ')
     .replace(/(Transaction\s*ID|Txn\s*ID)/gi, ' $1 ')
     .replace(/\b(Date)\b/gi, ' $1 ')
     .replace(/(Updated\s*Balance)/gi, ' $1 ')
@@ -21,11 +21,39 @@ export function parsePaymentEmail(subject = '', body = '', date = new Date()) {
     .replace(/(If\s+this)/gi, ' $1 ')
     .replace(/\s+/g, ' ');
 
-  // 2. Amount Extraction
-  // Priority 1: Explicitly match the received/credited amount (avoids matching "Updated Balance: ₹500.36")
+  // 2. Strict Debit / Outgoing Transaction Detection
+  // FamApp & Bank debit alerts:
+  // - "Your payment of ₹940.00 is successful"
+  // - "You have successfully paid ₹940.00 to Facebook"
+  // - "paid ₹... to ..."
+  // - "You sent ₹... to ..."
+  // - "debited from your account"
+  const hasDebitKeyword = /(?:successfully\s+paid|paid\s+(?:₹|\u20B9|Rs\.?|INR|\d+[\d.,]*)\s+to|payment\s+to\b|payment\s+of\s+[\d.,₹\s]+\s+is\s+successful|you\s+have\s+(?:successfully\s+)?paid|you\s+(?:have\s+)?sent|sent\s+(?:₹|\u20B9|Rs\.?|INR|\d+[\d.,]*)\s+to|transferred\s+(?:₹|\u20B9|Rs\.?|INR|\d+[\d.,]*)\s+to|\bdebited\b|\bdebit\b|spent\s+on|withdrawn|deducted\s+from)/i.test(text);
+
+  const hasExplicitCredit = /(?:successfully\s+received|received\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*[\d,]+\.?\d*\s*from|credited\s+(?:by|with|to)|money\s+received|payment\s+received\s+from)/i.test(text);
+
+  // If the email indicates a debit / outgoing payment and is NOT an incoming credit, discard immediately
+  if (hasDebitKeyword && !hasExplicitCredit) {
+    return {
+      success: false,
+      isDebit: true,
+      amount: 0,
+      utr: null,
+      sender: null,
+      error: 'Debit/outgoing transaction detected. Only incoming received amounts are counted in the gateway.',
+      rawSubject: subject,
+      rawSnippet: text.substring(0, 300)
+    };
+  }
+
+  // 3. Amount Extraction (Strictly Received / Credited)
   let amount = null;
+
+  // FamApp: "You have successfully received ₹100.0 from RIYAZ PASHA"
   const receivedAmountMatch = text.match(/(?:successfully\s+)?received\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*([\d,]+\.?\d*)/i) ||
-                              text.match(/(?:credited\s+(?:by|with)?|payment\s+of)\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*([\d,]+\.?\d*)/i);
+                              text.match(/(?:credited\s+(?:by|with)?)\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*([\d,]+\.?\d*)/i) ||
+                              text.match(/credited\s+for\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*([\d,]+\.?\d*)/i) ||
+                              text.match(/received\s+payment\s+of\s*(?:₹|\u20B9|Rs\.?|INR|[^\w\s.,]|\?)?\s*([\d,]+\.?\d*)/i);
 
   if (receivedAmountMatch && receivedAmountMatch[1]) {
     const parsed = parseFloat(receivedAmountMatch[1].replace(/,/g, ''));
@@ -34,16 +62,29 @@ export function parsePaymentEmail(subject = '', body = '', date = new Date()) {
     }
   }
 
-  // Priority 2: Fallback to general currency symbol
+  // If no explicit received amount pattern matched and no explicit credit was found, do NOT guess from loose symbols
   if (!amount || isNaN(amount)) {
-    const fallbackMatch = text.match(/(?:₹|Rs\.?|INR)\s*([\d,]+\.?\d{0,2})/i);
-    if (fallbackMatch && fallbackMatch[1]) {
-      amount = parseFloat(fallbackMatch[1].replace(/,/g, ''));
+    if (hasExplicitCredit) {
+      const fallbackMatch = text.match(/(?:₹|Rs\.?|INR)\s*([\d,]+\.?\d{0,2})/i);
+      if (fallbackMatch && fallbackMatch[1]) {
+        amount = parseFloat(fallbackMatch[1].replace(/,/g, ''));
+      }
     }
   }
 
-  // 3. UTR (12-digit Banking Ref) & FamPay Internal Transaction ID
-  // Standard bank 12-digit UTR has the highest priority for customer verification
+  // Must have a valid positive amount
+  if (!amount || isNaN(amount) || amount <= 0) {
+    return {
+      success: false,
+      isDebit: false,
+      amount: 0,
+      error: 'No valid received payment amount found in email',
+      rawSubject: subject,
+      rawSnippet: text.substring(0, 300)
+    };
+  }
+
+  // 4. UTR (12-digit Banking Ref) & FamPay Internal Transaction ID
   let utr = null;
   let txnId = null;
 
@@ -63,25 +104,25 @@ export function parsePaymentEmail(subject = '', body = '', date = new Date()) {
     txnId = txnMatch[1].trim().replace(/(?:Date|Updated|UTR)$/i, '');
   }
 
-  // Use 12-digit UTR if found; otherwise use FamPay Txn ID; fallback to generated timestamp
   const finalUtr = utr || txnId || `AUTO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  // 4. Sender Extraction
+  // 5. Sender Extraction (Strictly who sent to merchant)
   let sender = 'Unknown';
-  const nameMatch = text.match(/from\s+([A-Za-z\s]{2,40}?)(?:\s+at\s+\d{1,2}:\d{2}|\s*\(|\s*Transaction\s*ID|\s*Txn\s*ID|\s*\bDate\b|\s*UTR|\s*Updated|$)/i) ||
-                    text.match(/paid\s+(?:₹|Rs\.?|INR|\d+[\d.,]*)\s+to\s+([A-Za-z\s]{2,40}?)(?:\s+at\s+\d{1,2}:\d{2}|\s*\(|\s*Transaction\s*ID|\s*Txn\s*ID|\s*\bDate\b|\s*UTR|$)/i);
-  const upiIdMatch = text.match(/(?:from|to|\()\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)/i);
+  const nameMatch = text.match(/received\s+[^\n]+?\s+from\s+([A-Za-z\s]{2,40}?)(?:\s+at\s+\d{1,2}:\d{2}|\s*\(|\s*Transaction\s*ID|\s*Txn\s*ID|\s*\bDate\b|\s*UTR|\s*Updated|$)/i) ||
+                    text.match(/from\s+([A-Za-z\s]{2,40}?)(?:\s+at\s+\d{1,2}:\d{2}|\s*\(|\s*Transaction\s*ID|\s*Txn\s*ID|\s*\bDate\b|\s*UTR|\s*Updated|$)/i);
+  const upiIdMatch = text.match(/from\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)/i) ||
+                     text.match(/\(\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)\s*\)/i);
 
   if (nameMatch && nameMatch[1] && nameMatch[1].trim().length >= 2) {
     const candidate = nameMatch[1].trim();
-    if (!['you', 'your', 'account', 'customer'].includes(candidate.toLowerCase())) {
+    if (!['you', 'your', 'account', 'customer', 'fampay', 'famapp'].includes(candidate.toLowerCase())) {
       sender = candidate;
     }
   } else if (upiIdMatch && upiIdMatch[1]) {
     sender = upiIdMatch[1].trim();
   }
 
-  // 5. Payment Purpose / Source App (e.g. "Sent using Paytm UPI")
+  // 6. Payment Purpose / Source App (e.g. "Sent using Paytm UPI")
   let sourceApp = 'UPI';
   const appMatch = text.match(/Sent\s+using\s+([A-Za-z0-9\s]+?)(?:\s+If\s+this|\s+Disclaimer|$)/i);
   if (appMatch && appMatch[1]) {
@@ -89,7 +130,8 @@ export function parsePaymentEmail(subject = '', body = '', date = new Date()) {
   }
 
   return {
-    success: Boolean(amount && !isNaN(amount) && amount > 0),
+    success: true,
+    isDebit: false,
     amount,
     utr: finalUtr,
     rawUtr: utr,

@@ -14,6 +14,7 @@ router.get('/qr', OrderController.getQrCode);
 
 // Specific feature routers
 router.use('/orders', orderRoutes);
+router.use('/session', orderRoutes);
 router.use('/admin', adminRoutes);
 
 export default router;

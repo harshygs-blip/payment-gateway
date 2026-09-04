@@ -26,25 +26,41 @@ export function createApp(io = null) {
 
   const corsOptions = {
     origin: (origin, callback) => {
-      // Allow requests with no origin (like curl, Postman, server-to-server webhooks)
+      // Allow requests with no origin (curl, server-to-server, Postman, mobile apps)
       if (!origin) return callback(null, true);
 
-      const normalized = origin.trim().replace(/\/+$/, '');
-      const isAllowed = allowedOrigins.some(allowed => {
-        const cleanAllowed = allowed.trim().replace(/\/+$/, '');
-        return cleanAllowed === '*' || normalized === cleanAllowed;
-      });
+      const normalized = origin.trim().replace(/\/+$/, '').toLowerCase();
+
+      // Read current allowed origins dynamically from config
+      const dynamicAllowed = (config.allowedOrigins || [
+        'https://dealsbyshiv.web.app',
+        'https://dealsbyshiv.firebaseapp.com',
+        'https://payment-gateway-ydl1.onrender.com',
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:3000'
+      ]).map(s => s.trim().replace(/\/+$/, '').toLowerCase());
+
+      const isAllowed = dynamicAllowed.some(allowed => {
+        return allowed === '*' || normalized === allowed;
+      }) ||
+      normalized.includes('dealsbyshiv') ||
+      normalized.includes('onrender.com') ||
+      normalized.includes('localhost') ||
+      normalized.includes('127.0.0.1');
 
       if (isAllowed) {
         callback(null, true);
       } else {
-        console.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`);
-        callback(new Error(`CORS blocked for origin: ${origin}. Only authorized domains are permitted.`));
+        // Allow the request through for public API integration (protected by API Key)
+        // rather than breaking with a fatal browser network error
+        callback(null, true);
       }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'X-Requested-With', 'Accept']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'X-Requested-With', 'Accept', 'x-admin-key']
   };
 
   // Core Middlewares
